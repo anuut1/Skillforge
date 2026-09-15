@@ -1,0 +1,32 @@
+﻿version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: skillforge-local-db
+    environment:
+      POSTGRES_USER: skillforge_user
+      POSTGRES_PASSWORD: skillforge_password
+      POSTGRES_DB: skillforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: ../../server
+      dockerfile: ../infra/docker/Dockerfile.server
+    container_name: skillforge-server
+    environment:
+      DATABASE_URL: postgresql://skillforge_user:skillforge_password@postgres:5432/skillforge?schema=public
+      PORT: 5000
+      JWT_SECRET: local-dev-secret-for-docker
+      AI_PROVIDER: local
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

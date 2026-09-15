@@ -1,0 +1,394 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite doesn't support enums — using String with app-level validation instead.
+// Role values: "STUDENT" | "INSTRUCTOR"
+// LectureStatus values: "PROCESSING" | "READY"
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("STUDENT")
+  createdAt DateTime @default(now())
+
+  // Relationships
+  courses           Course[]           @relation("InstructorCourses")
+  enrollments       Enrollment[]
+  quizAttempts      QuizAttempt[]
+  profile           StudentProfile?
+  skills            StudentSkill[]
+  codingSubmissions CodingSubmission[]
+  projectSubmissions ProjectSubmission[]
+  interviews        InterviewSession[]
+  resumeAnalyses    ResumeAnalysis[]
+  resumeVersions    ResumeVersion[]
+  revisionTopics    RevisionTopic[]
+  roomMemberships   StudyRoomMember[]
+  notifications     Notification[]
+}
+
+model StudentProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  bio              String?  @default("Aspiring software engineer passionate about building scalable, high-impact applications.")
+  targetRole       String   @default("Software Engineer")
+  careerGoal       String   @default("Software Engineer")
+  currentLevel     String   @default("Intermediate") // Beginner, Intermediate, Advanced
+  weeklyTimeCommit String   @default("1 hour/day") // 15 min/day, 30 min/day, 1 hour/day, 2+ hours/day
+  goalDeadline     String   @default("Placement") // Placement, Internship, Certification, Exam preparation, Personal learning
+  knownTechs       String   @default("[]") // JSON string array e.g. ["JavaScript","SQL"]
+  githubUrl        String?  @default("https://github.com")
+  linkedinUrl      String?  @default("https://linkedin.com")
+  portfolioUrl     String?  @default("")
+  education        String?  @default("B.Tech / B.S. in Computer Science & Engineering (2025)")
+  experienceYears  String?  @default("0-2 years")
+  readinessScore   Int      @default(78) // 0 - 100
+  technicalScore   Int      @default(82)
+  communicationScore Int    @default(76)
+  problemSolvingScore Int   @default(81)
+  interviewScore   Int      @default(79)
+  xp               Int      @default(450)
+  streakDays       Int      @default(7)
+  lastActiveDate   DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Course {
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  category     String
+  thumbnailUrl String?
+  instructorId String
+  price        Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  instructor  User         @relation("InstructorCourses", fields: [instructorId], references: [id])
+  enrollments Enrollment[]
+  lectures    Lecture[]
+  quizzes     Quiz[]
+  projects    Project[]
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  userId     String
+  courseId    String
+  enrolledAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+}
+
+model Lecture {
+  id          String   @id @default(uuid())
+  courseId    String
+  title       String
+  description String
+  videoUrl    String?
+  status      String   @default("READY")
+  order       Int
+  duration    Int      @default(15) // minutes
+  summary     String?  // AI lecture summary or points
+  createdAt   DateTime @default(now())
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quizzes Quiz[]
+}
+
+model Quiz {
+  id        String   @id @default(uuid())
+  courseId   String
+  lectureId String?
+  title      String
+  difficulty String   @default("Medium") // Easy, Medium, Hard, Adaptive
+  topic      String   @default("General")
+  createdAt  DateTime @default(now())
+
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lecture   Lecture?       @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+}
+
+model QuizQuestion {
+  id                 String @id @default(uuid())
+  quizId             String
+  questionText       String
+  options            String // JSON string array, e.g. '["A","B","C","D"]'
+  correctOptionIndex Int
+  order              Int
+  difficulty         String @default("Medium") // Easy, Medium, Hard
+  topic              String @default("General")
+  explanation        String?
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+model QuizAttempt {
+  id             String   @id @default(uuid())
+  userId         String
+  quizId         String
+  score          Int
+  totalQuestions Int
+  answers        String // JSON string array of selected option indices
+  submittedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  category    String   // Programming, Core CS, Web, Cloud, Data, System Design
+  description String
+  parentSkill String?  // Hierarchical graph support
+
+  studentSkills StudentSkill[]
+}
+
+model StudentSkill {
+  id          String   @id @default(uuid())
+  userId      String
+  skillId     String
+  level       Int      @default(20) // 0 to 100 mastery percentage
+  status      String   @default("GAP") // "STRONG" (green >= 75), "IMPROVING" (yellow 40-74), "GAP" (red < 40), "RECOMMENDED" (blue)
+  updatedAt   DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+}
+
+model CodingProblem {
+  id               String   @id @default(uuid())
+  title            String
+  slug             String   @unique
+  difficulty       String   // Easy, Medium, Hard
+  category         String   // Arrays, HashMaps, Two Pointers, Trees, Dynamic Programming
+  description      String
+  examples         String   // JSON string of [{input, output, explanation}]
+  constraints      String   // JSON string array of strings
+  hints            String   // JSON string array of strings
+  starterCode      String   // JSON map: { "python": "...", "javascript": "...", "java": "...", "cpp": "..." }
+  testCases        String   // JSON array: [{ "input": "...", "expectedOutput": "..." }]
+  relatedSkillName String?
+  createdAt        DateTime @default(now())
+
+  submissions CodingSubmission[]
+}
+
+model CodingSubmission {
+  id            String   @id @default(uuid())
+  userId        String
+  problemId     String
+  language      String   // python, javascript, java, cpp
+  code          String
+  status        String   // Accepted, Wrong Answer, Runtime Error
+  passedTests   Int
+  totalTests    Int
+  runtimeMs     Int      @default(45)
+  memoryMb      Float    @default(14.2)
+  timeComplexity String  @default("O(n)")
+  aiReview      String?  // JSON string or markdown review
+  createdAt     DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem CodingProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id               String   @id @default(uuid())
+  courseId         String?
+  title            String
+  description      String
+  difficulty       String   // Beginner, Intermediate, Advanced
+  technologies     String   // JSON string array
+  requirements     String   // JSON string array of specs
+  milestones       String   // JSON string array
+  expectedOutcome  String
+  relatedSkillName String?
+  createdAt        DateTime @default(now())
+
+  course      Course?             @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  submissions ProjectSubmission[]
+}
+
+model ProjectSubmission {
+  id                 String   @id @default(uuid())
+  userId             String
+  projectId          String
+  githubUrl          String
+  liveDemoUrl        String?
+  notes              String?
+  codeQualityScore   Int      @default(80)
+  featureScore       Int      @default(85)
+  docsScore          Int      @default(75)
+  testingScore       Int      @default(70)
+  bestPracticeScore  Int      @default(80)
+  overallScore       Int      @default(78)
+  aiFeedback         String   // JSON suggestions & strengths
+  submittedAt        DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model InterviewSession {
+  id               String   @id @default(uuid())
+  userId           String
+  roleTarget       String   // Software Engineer, Backend Developer, etc.
+  interviewType    String   @default("DSA") // DSA, Core CS, Behavioral, Mixed, System Design
+  difficulty       String   @default("Intermediate") // Beginner, Intermediate, Advanced
+  totalQuestions   Int      @default(5)
+  timePerQuestion  Int      @default(120) // in seconds
+  currentQuestion  Int      @default(1)
+  status           String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED
+  overallScore     Int?
+  technicalScore   Int?     @default(80)
+  problemSolvingScore Int?  @default(75)
+  communicationScore Int?  @default(80)
+  confidenceScore  Int?     @default(75)
+  relevanceScore   Int?     @default(85)
+  strengths        String   @default("[]") // JSON array of strings
+  improvements     String   @default("[]") // JSON array of strings
+  feedbackSummary  String?  // JSON report
+  transcript       String   @default("[]") // JSON array of questions, user answers, scores, ideal answer, missing points
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ResumeAnalysis {
+  id                 String   @id @default(uuid())
+  userId             String
+  targetRole         String
+  jobTitle           String   @default("Software Engineer")
+  companyName        String?  @default("Target Company")
+  resumeVersionName  String?  @default("Primary Resume")
+  resumeText         String
+  jobDescription     String
+  atsScore           Int      @default(80) // 0 - 100
+  skillsMatchScore   Int      @default(85)
+  experienceMatchScore Int    @default(78)
+  keywordMatchScore  Int      @default(80)
+  projectMatchScore  Int      @default(82)
+  atsFormattingScore Int      @default(90)
+  jobBreakdown       String   // JSON { role, experience, coreSkills, preferred, responsibilities, topPriorities }
+  matchingSkills     String   // JSON array [{ name, whyItMatters }]
+  missingSkills      String   // JSON array [{ name, priority, whyItMatters, recommendedCourse }]
+  partialSkills      String   // JSON array [{ name, whyItMatters }]
+  atsIssues          String   // JSON array of strings / objects
+  keywordOptimization String  // JSON array [{ keyword, jdFreq, resumeFreq, status, recommendation }]
+  sectionFeedback    String   // JSON array [{ section, current, problem, suggested }]
+  fixerSuggestions   String   // JSON array [{ id, section, title, before, after, status }]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ResumeVersion {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String   // "Software Engineer Resume", "Frontend Resume", etc.
+  targetRole  String
+  resumeText  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RevisionTopic {
+  id          String   @id @default(uuid())
+  userId      String
+  topic       String
+  skillName   String
+  dueDay      Int      // 1, 2, 4, 7, 14, 30 (spaced repetition schedule)
+  dueDate     DateTime
+  intervalDays Int     @default(1)
+  retention   Int      @default(85) // 0 - 100%
+  status      String   @default("DUE") // DUE, COMPLETED, MASTERED
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudyRoom {
+  id          String   @id @default(uuid())
+  title       String
+  goal        String
+  topic       String
+  memberCount Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  members  StudyRoomMember[]
+  messages StudyMessage[]
+}
+
+model StudyRoomMember {
+  id       String    @id @default(uuid())
+  roomId   String
+  userId   String
+  joinedAt DateTime  @default(now())
+
+  room StudyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model StudyMessage {
+  id        String   @id @default(uuid())
+  roomId    String
+  senderName String
+  content   String
+  createdAt DateTime @default(now())
+
+  room StudyRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model DailyChallenge {
+  id             String   @id @default(uuid())
+  date           String   @unique // YYYY-MM-DD
+  codingTitle    String
+  codingDifficulty String
+  codingConcept  String
+  quizQuestion   String
+  quizOptions    String   // JSON string array
+  quizCorrectIdx Int
+  conceptPrompt  String
+  conceptAnswer  String
+  xpReward       Int      @default(50)
+  createdAt      DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String   // QUIZ_DUE, REVISION, STREAK, BADGE, MILESTONE
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

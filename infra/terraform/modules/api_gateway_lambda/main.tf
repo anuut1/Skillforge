@@ -1,5 +1,6 @@
 variable "environment" { type = string }
 variable "cognito_user_pool_arn" { type = string }
+variable "cognito_user_pool_endpoint" { type = string }
 variable "cognito_client_id" { type = string }
 variable "vpc_id" { type = string }
 variable "private_subnet_ids" { type = list(string) }
@@ -32,7 +33,7 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
 
   jwt_configuration {
     audience = [var.cognito_client_id]
-    issuer   = "https://${replace(var.cognito_user_pool_arn, "arn:aws:cognito-idp:", "")}"
+    issuer   = "https://${var.cognito_user_pool_endpoint}"
   }
 }
 

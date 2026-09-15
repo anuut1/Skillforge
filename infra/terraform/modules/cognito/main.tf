@@ -83,4 +83,5 @@ resource "aws_cognito_user_group" "admins" {
 
 output "user_pool_id" { value = aws_cognito_user_pool.pool.id }
 output "user_pool_arn" { value = aws_cognito_user_pool.pool.arn }
+output "user_pool_endpoint" { value = aws_cognito_user_pool.pool.endpoint }
 output "client_id" { value = aws_cognito_user_pool_client.client.id }

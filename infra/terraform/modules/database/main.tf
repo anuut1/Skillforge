@@ -16,7 +16,7 @@ resource "aws_db_subnet_group" "rds_subnets" {
 resource "aws_db_instance" "postgres" {
   identifier            = "skillforge-db-${var.environment}"
   engine                = "postgres"
-  engine_version        = "16.1"
+  engine_version        = "16.9"
   instance_class        = "db.t4g.micro"
   allocated_storage     = 20
   max_allocated_storage = 100
@@ -37,7 +37,7 @@ resource "aws_db_instance" "postgres" {
   skip_final_snapshot = true
   deletion_protection = false
 
-  backup_retention_period    = 7
+  backup_retention_period    = 1
   auto_minor_version_upgrade = true
 
   tags = { Name = "skillforge-rds-${var.environment}" }

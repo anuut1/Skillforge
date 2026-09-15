@@ -60,16 +60,17 @@ module "database" {
 
 # 6. Compute & API (API Gateway & Lambdas / ECS)
 module "api_gateway_lambda" {
-  source                   = "./modules/api_gateway_lambda"
-  environment              = var.environment
-  cognito_user_pool_arn    = module.cognito.user_pool_arn
-  cognito_client_id        = module.cognito.client_id
-  vpc_id                   = module.vpc.vpc_id
-  private_subnet_ids       = module.vpc.private_subnet_ids
-  lambda_security_group_id = module.vpc.lambda_security_group_id
-  user_data_bucket_arn     = module.s3_cloudfront.user_data_bucket_arn
-  user_data_bucket_name    = module.s3_cloudfront.user_data_bucket_name
-  kms_key_arn              = module.monitoring_security.kms_key_arn
+  source                     = "./modules/api_gateway_lambda"
+  environment                = var.environment
+  cognito_user_pool_arn      = module.cognito.user_pool_arn
+  cognito_user_pool_endpoint = module.cognito.user_pool_endpoint
+  cognito_client_id          = module.cognito.client_id
+  vpc_id                     = module.vpc.vpc_id
+  private_subnet_ids         = module.vpc.private_subnet_ids
+  lambda_security_group_id   = module.vpc.lambda_security_group_id
+  user_data_bucket_arn       = module.s3_cloudfront.user_data_bucket_arn
+  user_data_bucket_name      = module.s3_cloudfront.user_data_bucket_name
+  kms_key_arn                = module.monitoring_security.kms_key_arn
 }
 
 # 7. Asynchronous AI Pipeline (SQS, SNS, EventBridge, Step Functions)

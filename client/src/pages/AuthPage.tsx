@@ -21,7 +21,15 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import client from '../api/client';
-import { isCognitoEnabled, cognitoSignIn, cognitoSignUp } from '../lib/cognito';
+import {
+  isCognitoEnabled,
+  cognitoSignIn,
+  cognitoSignUp,
+  cognitoConfirmSignUp,
+  cognitoResendConfirmationCode,
+  cognitoForgotPassword,
+  cognitoConfirmPassword
+} from '../lib/cognito';
 
 const CAREER_GOALS = [
   'Software Engineer',
@@ -70,6 +78,15 @@ const AuthPage: React.FC = () => {
   const [forgotMsg, setForgotMsg] = useState('');
   const [forgotError, setForgotError] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+
+  // Email verification modal (for unconfirmed users)
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState('');
+  const [confirmCode, setConfirmCode] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [confirmMsg, setConfirmMsg] = useState('');
+  const [confirmError, setConfirmError] = useState('');
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Error & loading state
   const [error, setError] = useState('');
@@ -165,8 +182,22 @@ const AuthPage: React.FC = () => {
       navigate(userData.role === 'instructor' ? '/instructor' : '/student');
     } catch (err: any) {
       setLoginFailed(true);
-      const msg = err?.response?.data?.message || 'Incorrect email or password. Please try again.';
-      setError(msg);
+      const errName = err?.name || '';
+      const errMsg = err?.message || '';
+
+      if (errName === 'UserNotConfirmedException' || errMsg.includes('User is not confirmed')) {
+        setConfirmEmail(email.trim());
+        setConfirmPasswordInput(password);
+        setShowConfirmModal(true);
+        setError('Your account is registered but requires email confirmation code.');
+      } else if (errName === 'UserNotFoundException' || errMsg.includes('User does not exist')) {
+        setError('No account found with this email. Please click "Create Account" below.');
+      } else if (errName === 'NotAuthorizedException' || errMsg.includes('Incorrect username or password')) {
+        setError('Incorrect email or password. Please try again or use "Forgot Password?" below.');
+      } else {
+        const msg = err?.response?.data?.message || err?.message || 'Incorrect email or password. Please try again.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -219,11 +250,34 @@ const AuthPage: React.FC = () => {
       let userData: User;
 
       if (usingCognito) {
-        await cognitoSignUp(email.trim(), password, name.trim());
-        token = await cognitoSignIn(email.trim(), password);
-        localStorage.setItem('token', token);
-        const res = await client.get('/auth/me');
-        userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+        try {
+          await cognitoSignUp(email.trim(), password, name.trim());
+        } catch (cognitoErr: any) {
+          const errName = cognitoErr?.name || '';
+          const errMsg = cognitoErr?.message || '';
+          if (errName === 'UsernameExistsException' || errMsg.includes('already exists')) {
+            setError('An account with this email already exists in Cognito. If you forgot your credentials, click "Forgot Password" or log in.');
+            setLoading(false);
+            return;
+          }
+          throw cognitoErr;
+        }
+
+        try {
+          token = await cognitoSignIn(email.trim(), password);
+          localStorage.setItem('token', token);
+          const res = await client.get('/auth/me');
+          userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+        } catch (signInErr: any) {
+          if (signInErr?.name === 'UserNotConfirmedException' || signInErr?.message?.includes('not confirmed')) {
+            setConfirmEmail(email.trim());
+            setConfirmPasswordInput(password);
+            setShowConfirmModal(true);
+            setLoading(false);
+            return;
+          }
+          throw signInErr;
+        }
       } else {
         const res = await client.post('/auth/register', {
           email: email.trim(),
@@ -256,6 +310,57 @@ const AuthPage: React.FC = () => {
   };
 
   // ==========================================
+  // CONFIRM SIGNUP (VERIFICATION CODE)
+  // ==========================================
+  const handleConfirmAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setConfirmError('');
+    setConfirmMsg('');
+
+    if (!confirmCode.trim()) {
+      setConfirmError('Please enter the verification code sent to your email.');
+      return;
+    }
+
+    setConfirmLoading(true);
+    try {
+      await cognitoConfirmSignUp(confirmEmail.trim(), confirmCode.trim());
+      setConfirmMsg('Account verified successfully! Logging you in...');
+
+      if (confirmPasswordInput) {
+        const token = await cognitoSignIn(confirmEmail.trim(), confirmPasswordInput);
+        localStorage.setItem('token', token);
+        const res = await client.get('/auth/me');
+        const userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+        login(token, userData);
+        setShowConfirmModal(false);
+        navigate('/student');
+      } else {
+        setTimeout(() => {
+          setShowConfirmModal(false);
+          setEmail(confirmEmail);
+          setIsLogin(true);
+        }, 1500);
+      }
+    } catch (err: any) {
+      setConfirmError(err?.message || 'Invalid or expired confirmation code.');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setConfirmError('');
+    setConfirmMsg('');
+    try {
+      await cognitoResendConfirmationCode(confirmEmail.trim());
+      setConfirmMsg('A new verification code has been dispatched to your email.');
+    } catch (err: any) {
+      setConfirmError(err?.message || 'Could not resend code.');
+    }
+  };
+
+  // ==========================================
   // FORGOT / RESET PASSWORD SUBMISSION
   // ==========================================
   const handleRequestReset = async (e: React.FormEvent) => {
@@ -270,12 +375,18 @@ const AuthPage: React.FC = () => {
 
     setForgotLoading(true);
     try {
-      const res = await client.post('/auth/forgot-password', { email: forgotEmail.trim() });
-      setForgotMsg(`Verification code generated: ${res.data.resetCode || '123456'}. Enter it below.`);
-      if (res.data.resetCode) setResetCode(res.data.resetCode);
-      setForgotStep(2);
+      if (usingCognito) {
+        await cognitoForgotPassword(forgotEmail.trim());
+        setForgotMsg('Verification code sent to your registered email. Enter it below.');
+        setForgotStep(2);
+      } else {
+        const res = await client.post('/auth/forgot-password', { email: forgotEmail.trim() });
+        setForgotMsg(`Verification code generated: ${res.data.resetCode || '123456'}. Enter it below.`);
+        if (res.data.resetCode) setResetCode(res.data.resetCode);
+        setForgotStep(2);
+      }
     } catch (err: any) {
-      setForgotError(err?.response?.data?.message || 'Error generating reset token.');
+      setForgotError(err?.message || err?.response?.data?.message || 'Error initiating password reset.');
     } finally {
       setForgotLoading(false);
     }
@@ -286,7 +397,7 @@ const AuthPage: React.FC = () => {
     setForgotError('');
 
     if (!resetCode || resetCode.length < 4) {
-      setForgotError('Please enter the 6-digit verification code.');
+      setForgotError('Please enter the verification code.');
       return;
     }
     if (newPassword.length < 8) {
@@ -296,12 +407,17 @@ const AuthPage: React.FC = () => {
 
     setForgotLoading(true);
     try {
-      await client.post('/auth/reset-password', {
-        email: forgotEmail.trim(),
-        token: resetCode.trim(),
-        newPassword
-      });
-      setForgotMsg('Password updated successfully! You can now log in.');
+      if (usingCognito) {
+        await cognitoConfirmPassword(forgotEmail.trim(), resetCode.trim(), newPassword);
+        setForgotMsg('Password updated successfully in AWS Cognito! You can now log in.');
+      } else {
+        await client.post('/auth/reset-password', {
+          email: forgotEmail.trim(),
+          token: resetCode.trim(),
+          newPassword
+        });
+        setForgotMsg('Password updated successfully! You can now log in.');
+      }
       setTimeout(() => {
         setShowForgotPassword(false);
         setForgotStep(1);
@@ -309,7 +425,7 @@ const AuthPage: React.FC = () => {
         setIsLogin(true);
       }, 1800);
     } catch (err: any) {
-      setForgotError(err?.response?.data?.message || 'Failed to reset password.');
+      setForgotError(err?.message || err?.response?.data?.message || 'Failed to reset password.');
     } finally {
       setForgotLoading(false);
     }
@@ -889,6 +1005,79 @@ const AuthPage: React.FC = () => {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* EMAIL VERIFICATION / CONFIRMATION MODAL */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-indigo-400" />
+                <h3 className="font-bold text-white text-base">Verify Your Email</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setConfirmError('');
+                  setConfirmMsg('');
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {confirmError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                {confirmError}
+              </div>
+            )}
+
+            {confirmMsg && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
+                {confirmMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmAccount} className="space-y-4">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                AWS Cognito sent a 6-digit confirmation code to <strong className="text-white">{confirmEmail}</strong>. Enter it below to activate your account.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">Verification Code</label>
+                <input
+                  type="text"
+                  required
+                  value={confirmCode}
+                  onChange={(e) => setConfirmCode(e.target.value)}
+                  placeholder="e.g. 123456"
+                  className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:ring-2 focus:ring-indigo-500 font-mono tracking-wider text-center text-sm font-bold"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={confirmLoading}
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {confirmLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {confirmLoading ? 'Verifying...' : 'Verify & Continue'}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  className="text-xs text-indigo-400 hover:underline"
+                >
+                  Didn't receive the code? Resend Code
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

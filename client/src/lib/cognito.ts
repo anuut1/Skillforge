@@ -24,6 +24,62 @@ export async function cognitoSignUp(email: string, password: string, name: strin
   });
 }
 
+export async function cognitoConfirmSignUp(email: string, code: string): Promise<any> {
+  if (!isCognitoEnabled()) throw new Error('Cognito not configured');
+  const { CognitoUserPool, CognitoUser } = await import('amazon-cognito-identity-js');
+  const userPool = new CognitoUserPool(POOL_DATA);
+  const user = new CognitoUser({ Username: email, Pool: userPool });
+
+  return new Promise((resolve, reject) => {
+    user.confirmRegistration(code, true, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
+}
+
+export async function cognitoResendConfirmationCode(email: string): Promise<any> {
+  if (!isCognitoEnabled()) throw new Error('Cognito not configured');
+  const { CognitoUserPool, CognitoUser } = await import('amazon-cognito-identity-js');
+  const userPool = new CognitoUserPool(POOL_DATA);
+  const user = new CognitoUser({ Username: email, Pool: userPool });
+
+  return new Promise((resolve, reject) => {
+    user.resendConfirmationCode((err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
+}
+
+export async function cognitoForgotPassword(email: string): Promise<any> {
+  if (!isCognitoEnabled()) throw new Error('Cognito not configured');
+  const { CognitoUserPool, CognitoUser } = await import('amazon-cognito-identity-js');
+  const userPool = new CognitoUserPool(POOL_DATA);
+  const user = new CognitoUser({ Username: email, Pool: userPool });
+
+  return new Promise((resolve, reject) => {
+    user.forgotPassword({
+      onSuccess: (data) => resolve(data),
+      onFailure: (err) => reject(err),
+    });
+  });
+}
+
+export async function cognitoConfirmPassword(email: string, code: string, newPass: string): Promise<any> {
+  if (!isCognitoEnabled()) throw new Error('Cognito not configured');
+  const { CognitoUserPool, CognitoUser } = await import('amazon-cognito-identity-js');
+  const userPool = new CognitoUserPool(POOL_DATA);
+  const user = new CognitoUser({ Username: email, Pool: userPool });
+
+  return new Promise((resolve, reject) => {
+    user.confirmPassword(code, newPass, {
+      onSuccess: () => resolve(true),
+      onFailure: (err) => reject(err),
+    });
+  });
+}
+
 export async function cognitoSignIn(email: string, password: string): Promise<string> {
   if (!isCognitoEnabled()) throw new Error('Cognito not configured');
   const { CognitoUserPool, CognitoUser, AuthenticationDetails } = await import('amazon-cognito-identity-js');
@@ -61,4 +117,3 @@ export async function cognitoGetCurrentToken(): Promise<string | null> {
     });
   });
 }
-

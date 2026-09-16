@@ -1,10 +1,10 @@
-﻿name: SkillForge CI/CD Pipeline
+name: SkillForge CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, aws-migration ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, aws-migration ]
 
 jobs:
   test_and_build:

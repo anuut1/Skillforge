@@ -1,4 +1,4 @@
-﻿import { isBedrockConfigured, invokeBedrockJson } from '../lib/bedrock';
+import { isBedrockConfigured, invokeBedrockJson } from '../lib/bedrock';
 import { resumeAnalysisService, DetailedResumeAnalysis } from './aiServices';
 
 export async function analyzeResumeWithBedrockOrFallback(
@@ -38,7 +38,8 @@ Return your evaluation strictly in the following JSON format conforming to RFC 8
   "atsIssues": [{"issue": string, "severity": "High" | "Medium" | "Low", "fix": string}],
   "keywordOptimization": [{"keyword": string, "jdFreq": number, "resumeFreq": number, "status": "Matched" | "Underrepresented" | "Missing", "recommendation": string}],
   "sectionFeedback": [{"section": string, "status": "Strong" | "Needs Improvement" | "Missing", "current": string, "problem": string, "suggested": string}],
-  "fixerSuggestions": [{"id": string, "section": string, "title": string, "before": string, "after": string, "status": "pending"}]
+  "fixerSuggestions": [{"id": string, "section": string, "title": string, "before": string, "after": string, "status": "pending"}],
+  "scoreDrivers": [{"factor": "skill" | "experience" | "keyword" | "formatting" | "project", "name": string, "impact": "positive" | "negative" | "neutral", "points": number, "explanation": string, "evidenceSentence": string, "actionableTip": string}]
 }`;
 
   const userPrompt = `Target Role: ${targetRole}\n\nJob Description:\n${jobDescription || 'N/A'}\n\nCandidate Resume:\n${resumeText}`;

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, XCircle, Sparkles, ArrowRight, Layers, ShieldCheck, Zap } from 'lucide-react';
 import client from '../api/client';
+import RecommendationFeedbackButton from '../components/common/RecommendationFeedbackButton';
 import type { SkillNode } from '../types';
 
 const SkillGapPage: React.FC = () => {
@@ -219,8 +220,15 @@ const SkillGapPage: React.FC = () => {
             <div className="space-y-4">
               {recommendations.map((rec, i) => (
                 <div key={i} className="p-4 rounded-xl border border-sky-500/20 bg-sky-500/5">
-                  <div className="flex items-center gap-2 text-xs font-bold text-sky-400 mb-1">
+                  <div className="flex items-center justify-between gap-2 text-xs font-bold text-sky-400 mb-1">
                     <span>Priority {i + 1}</span>
+                    <RecommendationFeedbackButton
+                      recommendationType="TOPIC"
+                      itemId={rec.topic}
+                      itemTitle={rec.topic}
+                      sourcePage="SKILL_GAP"
+                      metadata={{ reason: rec.reason }}
+                    />
                   </div>
                   <h3 className="font-semibold text-white mb-1.5">{rec.topic}</h3>
                   <p className="text-xs text-slate-400 leading-relaxed mb-3">{rec.reason}</p>

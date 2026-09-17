@@ -772,7 +772,8 @@ export const analyzeResume = async (req: Request, res: Response) => {
           atsIssues: JSON.stringify(analysis.atsIssues),
           keywordOptimization: JSON.stringify(analysis.keywordOptimization),
           sectionFeedback: JSON.stringify(analysis.sectionFeedback),
-          fixerSuggestions: JSON.stringify(analysis.fixerSuggestions)
+          fixerSuggestions: JSON.stringify(analysis.fixerSuggestions),
+          scoreDrivers: JSON.stringify(analysis.scoreDrivers || [])
         }
       }).catch(err => {
         console.error('Failed to persist resume analysis:', err);
@@ -833,6 +834,7 @@ export const getResumeHistory = async (req: Request, res: Response) => {
       keywordOptimization: JSON.parse(item.keywordOptimization || '[]'),
       sectionFeedback: JSON.parse(item.sectionFeedback || '[]'),
       fixerSuggestions: JSON.parse(item.fixerSuggestions || '[]'),
+      scoreDrivers: JSON.parse(item.scoreDrivers || '[]'),
       resumeText: item.resumeText,
       jobDescription: item.jobDescription
     }));

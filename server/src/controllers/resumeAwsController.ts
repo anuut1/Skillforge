@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { generateResumeUploadUrl, generateDocumentDownloadUrl, isS3Configured } from '../lib/s3';
 import { extractTextFromS3Document } from '../lib/textract';
 import { queueResumeAnalysisJob, publishDomainEvent } from '../lib/messaging';
@@ -114,6 +114,7 @@ export async function processUploadedResume(req: Request, res: Response) {
         keywordOptimization: JSON.stringify(analysis.keywordOptimization),
         sectionFeedback: JSON.stringify(analysis.sectionFeedback),
         fixerSuggestions: JSON.stringify(analysis.fixerSuggestions),
+        scoreDrivers: JSON.stringify(analysis.scoreDrivers || []),
       },
     });
 

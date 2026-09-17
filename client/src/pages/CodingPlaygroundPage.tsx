@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import client from '../api/client';
 import type { CodingProblem } from '../types';
+import { RecommendationFeedbackButton } from '../components/common/RecommendationFeedbackButton';
 
 interface ProblemListItem {
   id: string;
@@ -650,8 +651,18 @@ const CodingPlaygroundPage: React.FC = () => {
                 <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
                   {rec.reason}
                 </p>
-                <div className="mt-3 flex items-center text-xs font-bold text-indigo-400 group-hover:translate-x-1 transition-transform">
-                  Solve Now <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center text-xs font-bold text-indigo-400 group-hover:translate-x-1 transition-transform">
+                    Solve Now <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <RecommendationFeedbackButton
+                      recommendationType="QUESTION"
+                      itemId={rec.id}
+                      itemTitle={rec.title}
+                      sourcePage="Coding Playground"
+                    />
+                  </div>
                 </div>
               </div>
             ))}

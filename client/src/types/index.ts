@@ -211,9 +211,34 @@ export interface DetailedResumeAnalysis {
     after: string;
     status: 'pending' | 'accepted' | 'rejected';
   }[];
+  scoreDrivers?: ScoreDriver[];
   createdAt?: string;
   resumeText?: string;
   jobDescription?: string;
+}
+
+export interface ScoreDriver {
+  factor: 'skill' | 'experience' | 'keyword' | 'formatting' | 'project';
+  name: string;
+  impact: 'positive' | 'negative' | 'neutral';
+  points: number;
+  explanation: string;
+  evidenceSentence?: string;
+  sourceLocation?: {
+    section?: string;
+    lineNumber?: number;
+  };
+  actionableTip?: string;
+}
+
+export interface RecommendationFeedbackPayload {
+  recommendationType: 'COURSE' | 'PROJECT' | 'QUESTION' | 'RESUME_SKILL' | 'TOPIC';
+  itemId: string;
+  itemTitle: string;
+  sourcePage: string;
+  reason?: string;
+  userComment?: string;
+  metadata?: any;
 }
 
 export interface ResumeVersionItem {

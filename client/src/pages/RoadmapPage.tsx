@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles, CheckCircle2, Lock, ArrowRight, BookOpen, Clock, Target, AlertCircle } from 'lucide-react';
 import client from '../api/client';
+import RecommendationFeedbackButton from '../components/common/RecommendationFeedbackButton';
 import type { RoadmapMilestone } from '../types';
 
 const RoadmapPage: React.FC = () => {
@@ -75,6 +76,13 @@ const RoadmapPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
+              <RecommendationFeedbackButton
+                recommendationType="TOPIC"
+                itemId={recommendedNextTopic}
+                itemTitle={recommendedNextTopic}
+                sourcePage="ROADMAP"
+                metadata={{ whyRecommended }}
+              />
               <Link
                 to="/catalog"
                 className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.02]"

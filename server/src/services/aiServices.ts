@@ -115,6 +115,20 @@ export const codeReviewService = {
   }
 };
 
+export interface ScoreDriver {
+  factor: 'skill' | 'experience' | 'keyword' | 'formatting' | 'project';
+  name: string;
+  impact: 'positive' | 'negative' | 'neutral';
+  points: number;
+  explanation: string;
+  evidenceSentence?: string;
+  sourceLocation?: {
+    section?: string;
+    lineNumber?: number;
+  };
+  actionableTip?: string;
+}
+
 export interface DetailedResumeAnalysis {
   targetRole: string;
   jobTitle: string;
@@ -159,6 +173,7 @@ export interface DetailedResumeAnalysis {
     after: string;
     status: 'pending' | 'accepted' | 'rejected';
   }[];
+  scoreDrivers: ScoreDriver[];
 }
 
 export const resumeAnalysisService = {
@@ -448,6 +463,119 @@ export const resumeAnalysisService = {
       topPriorities
     };
 
+    // Build granular explainability score drivers with sentence-level evidence
+    const rawLines = resumeText.split(/\r?\n/);
+    const findEvidence = (term: string): { sentence: string; section: string; lineNumber: number } | undefined => {
+      const termLower = term.toLowerCase();
+      let currentSection = 'General';
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i].trim();
+        if (!line) continue;
+        const lineLower = line.toLowerCase();
+        if (lineLower.includes('experience') || lineLower.includes('employment') || lineLower.includes('work history')) {
+          currentSection = 'Professional Experience';
+        } else if (lineLower.includes('project')) {
+          currentSection = 'Projects';
+        } else if (lineLower.includes('education') || lineLower.includes('academics')) {
+          currentSection = 'Education';
+        } else if (lineLower.includes('skills') || lineLower.includes('technologies')) {
+          currentSection = 'Technical Skills';
+        } else if (lineLower.includes('summary') || lineLower.includes('profile')) {
+          currentSection = 'Summary';
+        }
+
+        if (lineLower.includes(termLower) && line.length >= 8) {
+          return {
+            sentence: line.replace(/^[-•*|#\d.]\s*/, '').trim(),
+            section: currentSection,
+            lineNumber: i + 1,
+          };
+        }
+      }
+      return undefined;
+    };
+
+    const scoreDrivers: ScoreDriver[] = [];
+
+    // 1. Positive Skill Drivers
+    matchingSkills.slice(0, 5).forEach((skill) => {
+      const ev = findEvidence(skill.name);
+      const isCore = coreSkillsList.some(s => s.toLowerCase() === skill.name.toLowerCase());
+      scoreDrivers.push({
+        factor: 'skill',
+        name: skill.name,
+        impact: 'positive',
+        points: isCore ? 12 : 7,
+        explanation: `${skill.name} directly matches a ${isCore ? 'core technical requirement' : 'preferred qualification'} for ${targetRole}.`,
+        evidenceSentence: ev?.sentence || `Verified competency in candidate profile`,
+        sourceLocation: ev ? { section: ev.section, lineNumber: ev.lineNumber } : undefined,
+        actionableTip: `Highlight depth of ${skill.name} by emphasizing system scale, concurrency, or latency gains.`
+      });
+    });
+
+    // 2. Measurable / Quantified Experience Driver
+    if (numbersMatch && numbersMatch.length >= 2) {
+      let metricLine = '';
+      let metricSection = 'Projects & Experience';
+      let metricLineNum = 1;
+      for (let i = 0; i < rawLines.length; i++) {
+        if (/\d+[%kKmM+]/.test(rawLines[i])) {
+          metricLine = rawLines[i].replace(/^[-•*|#\d.]\s*/, '').trim();
+          metricLineNum = i + 1;
+          break;
+        }
+      }
+      scoreDrivers.push({
+        factor: 'experience',
+        name: 'Quantified Impact Metrics',
+        impact: 'positive',
+        points: 10,
+        explanation: 'Resume incorporates concrete performance indicators and measurable engineering outcomes.',
+        evidenceSentence: metricLine || 'Metrics detected in experience sections',
+        sourceLocation: { section: metricSection, lineNumber: metricLineNum },
+        actionableTip: 'Continue backing up architectural responsibilities with concrete percentages and throughput numbers.'
+      });
+    }
+
+    // 3. Negative Missing Skill Drivers
+    missingSkills.slice(0, 4).forEach((skill) => {
+      scoreDrivers.push({
+        factor: 'skill',
+        name: `Missing: ${skill.name}`,
+        impact: 'negative',
+        points: skill.priority === 'Critical' ? -12 : -6,
+        explanation: `${skill.name} is missing from your resume but expected by recruiters evaluating ${targetRole} candidates.`,
+        actionableTip: `Complete the recommended bridge: ${skill.recommendedCourse} and add a dedicated bullet point.`
+      });
+    });
+
+    // 4. Formatting & ATS Issues
+    atsIssues.slice(0, 3).forEach((issue) => {
+      scoreDrivers.push({
+        factor: 'formatting',
+        name: issue.issue,
+        impact: 'negative',
+        points: issue.severity === 'High' ? -8 : -4,
+        explanation: issue.fix,
+        actionableTip: issue.fix
+      });
+    });
+
+    // 5. Partial Skill Matches
+    partialSkills.slice(0, 2).forEach((skill) => {
+      const ev = findEvidence(skill.name.split(' ')[0]);
+      scoreDrivers.push({
+        factor: 'skill',
+        name: `Partial: ${skill.name}`,
+        impact: 'neutral',
+        points: 3,
+        explanation: `Concept is indirectly implied, but automated ATS keyword parsers score exact matches higher.`,
+        evidenceSentence: ev?.sentence,
+        sourceLocation: ev ? { section: ev.section, lineNumber: ev.lineNumber } : undefined,
+        actionableTip: `Explicitly replace generic descriptions with '${skill.name}'.`
+      });
+    });
+
     return {
       targetRole,
       jobTitle: hasJD ? targetRole : `${targetRole} Position`,
@@ -465,7 +593,8 @@ export const resumeAnalysisService = {
       atsIssues,
       keywordOptimization,
       sectionFeedback,
-      fixerSuggestions
+      fixerSuggestions,
+      scoreDrivers
     };
   }
 };

@@ -9,6 +9,7 @@ import enrollmentRoutes from './routes/enrollmentRoutes';
 import lectureRoutes from './routes/lectureRoutes';
 import quizRoutes from './routes/quizRoutes';
 import adaptiveRoutes from './routes/adaptiveRoutes';
+import feedbackRoutes from './routes/feedbackRoutes';
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/lectures', lectureRoutes);
 app.use('/api/quizzes', quizRoutes);
+app.use('/api/recommendations/feedback', feedbackRoutes);
 app.use('/api', adaptiveRoutes);
 
 app.use(errorHandler);

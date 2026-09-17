@@ -1,4 +1,4 @@
-﻿import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 
@@ -49,7 +49,7 @@ export async function queueResumeAnalysisJob(payload: {
  */
 export async function publishDomainEvent(
   source: string,
-  detailType: 'ResumeUploaded' | 'ResumeAnalyzed' | 'DSAQuestionSolved' | 'CourseCompleted' | 'QuizCompleted' | 'InterviewCompleted' | 'SkillGapUpdated' | 'AchievementUnlocked',
+  detailType: 'ResumeUploaded' | 'ResumeAnalyzed' | 'DSAQuestionSolved' | 'CourseCompleted' | 'QuizCompleted' | 'InterviewCompleted' | 'SkillGapUpdated' | 'AchievementUnlocked' | 'RecommendationFlagged',
   detail: Record<string, any>
 ) {
   if (!process.env.EVENTBRIDGE_BUS_NAME) {

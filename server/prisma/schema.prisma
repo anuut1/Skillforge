@@ -33,6 +33,7 @@ model User {
   revisionTopics    RevisionTopic[]
   roomMemberships   StudyRoomMember[]
   notifications     Notification[]
+  recommendationFeedbacks RecommendationFeedback[]
 }
 
 model StudentProfile {
@@ -299,6 +300,7 @@ model ResumeAnalysis {
   keywordOptimization String  // JSON array [{ keyword, jdFreq, resumeFreq, status, recommendation }]
   sectionFeedback    String   // JSON array [{ section, current, problem, suggested }]
   fixerSuggestions   String   // JSON array [{ id, section, title, before, after, status }]
+  scoreDrivers       String?  // JSON array [{ factor, name, impact, points, explanation, evidenceSentence, sourceLocation, actionableTip }]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -391,4 +393,22 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecommendationFeedback {
+  id                 String   @id @default(uuid())
+  userId             String
+  recommendationType String   // "COURSE" | "PROJECT" | "QUESTION" | "RESUME_SKILL" | "TOPIC"
+  itemId             String   // ID or unique slug of the recommended entity
+  itemTitle          String   // e.g., "Mastering Java & OOP", "Two Sum"
+  sourcePage         String   // "RESUME_MATCHER" | "ROADMAP" | "SKILL_GAP" | "CODING_PLAYGROUND"
+  reason             String?  // "not_relevant" | "already_know" | "too_easy" | "too_difficult"
+  userComment        String?
+  metadata           String?  // JSON string of context
+  createdAt          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([recommendationType, itemId])
 }

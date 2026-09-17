@@ -36,7 +36,7 @@ import {
   getMistakeMemory,
   getLearningDna
 } from '../controllers/adaptiveController';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate, optionalAuthenticate } from '../middleware/authenticate';
 import { authorize } from '../middleware/authorize';
 
 const router = Router();
@@ -54,9 +54,9 @@ router.post('/ai/tutor', authenticate, askAiTutor);
 
 // Coding Playground
 router.get('/coding/categories', getPlaygroundCategories);
-router.get('/coding/stats', authenticate, getPlaygroundStats);
-router.get('/coding/problems', authenticate, getCodingProblems);
-router.get('/coding/problems/:slug', authenticate, getCodingProblem);
+router.get('/coding/stats', optionalAuthenticate, getPlaygroundStats);
+router.get('/coding/problems', optionalAuthenticate, getCodingProblems);
+router.get('/coding/problems/:slug', optionalAuthenticate, getCodingProblem);
 router.post('/coding/submit', authenticate, submitCodingSolution);
 
 // Adaptive Quizzes

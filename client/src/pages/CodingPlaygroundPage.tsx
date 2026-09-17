@@ -21,6 +21,7 @@ import {
 import client from '../api/client';
 import type { CodingProblem } from '../types';
 import { RecommendationFeedbackButton } from '../components/common/RecommendationFeedbackButton';
+import { DSA_CATEGORIES, DSA_PROBLEMS_CATALOG } from '../data/dsaCatalog';
 
 interface ProblemListItem {
   id: string;
@@ -75,35 +76,7 @@ interface PlaygroundStats {
   }[];
 }
 
-const ALL_CATEGORIES = [
-  'All',
-  'Arrays',
-  'Strings',
-  'Hashing',
-  'Two Pointers',
-  'Sliding Window',
-  'Binary Search',
-  'Sorting',
-  'Linked List',
-  'Stack',
-  'Queue',
-  'Deque',
-  'Recursion',
-  'Backtracking',
-  'Trees',
-  'Binary Search Tree',
-  'Heap / Priority Queue',
-  'Greedy',
-  'Graphs',
-  'BFS',
-  'DFS',
-  'Dynamic Programming',
-  'Bit Manipulation',
-  'Tries',
-  'Intervals',
-  'Matrix',
-  'Math / Number Theory'
-];
+const ALL_CATEGORIES = ['All', ...DSA_CATEGORIES];
 
 const CodingPlaygroundPage: React.FC = () => {
   const { slug } = useParams();
@@ -145,7 +118,51 @@ const CodingPlaygroundPage: React.FC = () => {
   useEffect(() => {
     client.get('/coding/stats')
       .then(res => setStats(res.data))
-      .catch(err => console.error('Failed to load stats:', err));
+      .catch(() => {
+        // Build fallback stats from client catalog
+        const total = DSA_PROBLEMS_CATALOG.length;
+        const byDiff: Record<string, { total: number; solved: number; attempted: number }> = {
+          Easy: { total: 0, solved: 0, attempted: 0 },
+          Medium: { total: 0, solved: 0, attempted: 0 },
+          Hard: { total: 0, solved: 0, attempted: 0 }
+        };
+        const topicProg: Record<string, { total: number; solved: number; attempted: number }> = {};
+        DSA_CATEGORIES.forEach(c => {
+          topicProg[c] = { total: 0, solved: 0, attempted: 0 };
+        });
+
+        DSA_PROBLEMS_CATALOG.forEach(p => {
+          if (byDiff[p.difficulty]) byDiff[p.difficulty].total++;
+          if (!topicProg[p.category]) topicProg[p.category] = { total: 0, solved: 0, attempted: 0 };
+          topicProg[p.category].total++;
+        });
+
+        setStats({
+          totalProblems: total,
+          totalSolved: 0,
+          totalAttempted: 0,
+          accuracy: 0,
+          streakDays: 1,
+          xp: 150,
+          byDifficulty: byDiff as any,
+          topicProgress: topicProg,
+          todayGoal: {
+            target: 3,
+            solvedToday: 0,
+            isCompleted: false,
+            xpReward: 50
+          },
+          recommendedProblems: DSA_PROBLEMS_CATALOG.slice(0, 4).map(p => ({
+            id: p.slug,
+            title: p.title,
+            slug: p.slug,
+            difficulty: p.difficulty,
+            category: p.category,
+            reason: `High-frequency interview pattern in ${p.category}`
+          })),
+          recentSubmissions: []
+        });
+      });
 
     client.get('/coding/categories')
       .then(res => {
@@ -153,7 +170,9 @@ const CodingPlaygroundPage: React.FC = () => {
           setCategories(['All', ...res.data.categories]);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setCategories(ALL_CATEGORIES);
+      });
   }, [slug]);
 
   // Load Problems Catalog for Library
@@ -168,14 +187,44 @@ const CodingPlaygroundPage: React.FC = () => {
 
       client.get(`/coding/problems?${params.toString()}`)
         .then(res => {
-          if (Array.isArray(res.data)) {
+          if (Array.isArray(res.data) && res.data.length > 0) {
             setProblemsList(res.data);
+          } else {
+            // Apply filtering locally on full catalog if backend returns empty or error
+            applyCatalogFallback();
           }
         })
-        .catch(err => console.error('Failed to load problems:', err))
+        .catch(() => {
+          applyCatalogFallback();
+        })
         .finally(() => setLoading(false));
     }
   }, [isEditorMode, selectedCategory, selectedDifficulty, selectedStatus, searchQuery, activeViewTab]);
+
+  const applyCatalogFallback = () => {
+    let list: ProblemListItem[] = DSA_PROBLEMS_CATALOG.map(p => ({
+      id: p.slug,
+      title: p.title,
+      slug: p.slug,
+      difficulty: p.difficulty,
+      category: p.category,
+      relatedSkillName: p.relatedSkillName,
+      userStatus: 'Unsolved'
+    }));
+
+    if (selectedCategory !== 'All') {
+      list = list.filter(p => p.category.toLowerCase() === selectedCategory.toLowerCase());
+    }
+    if (selectedDifficulty !== 'All') {
+      list = list.filter(p => p.difficulty === selectedDifficulty);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(p => p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+    }
+
+    setProblemsList(list);
+  };
 
   // Load Problem for Workspace
   useEffect(() => {
@@ -192,7 +241,33 @@ const CodingPlaygroundPage: React.FC = () => {
             } catch {}
           }
         })
-        .catch(err => console.error('Error fetching problem:', err));
+        .catch(() => {
+          // Fallback to DSA_PROBLEMS_CATALOG
+          const found = DSA_PROBLEMS_CATALOG.find(p => p.slug === slug);
+          if (found) {
+            const mappedProblem: CodingProblem = {
+              id: found.slug,
+              title: found.title,
+              slug: found.slug,
+              difficulty: found.difficulty,
+              category: found.category,
+              description: found.description,
+              examples: found.examples,
+              constraints: found.constraints,
+              hints: found.hints,
+              starterCode: found.starterCode,
+              testCases: found.testCases,
+              relatedSkillName: found.relatedSkillName
+            };
+            setProblem(mappedProblem);
+            try {
+              const starters = JSON.parse(found.starterCode);
+              if (starters[language]) {
+                setCode(starters[language]);
+              }
+            } catch {}
+          }
+        });
     }
   }, [slug]);
 

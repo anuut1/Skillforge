@@ -11,27 +11,23 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
     const token = authHeader.split(' ')[1];
 
-    let userId: string;
-
     // Try Cognito first if configured
     if (isCognitoConfigured()) {
       try {
         const cognitoPayload = await verifyCognitoToken(token);
-        // Cognito sub is the unique user ID — find or create user in our DB
         const cognitoSub = cognitoPayload.sub;
         const email = (cognitoPayload as any)['email'] || (cognitoPayload as any)['username'] || '';
         const groups: string[] = (cognitoPayload as any)['cognito:groups'] || [];
         const role = groups.includes('instructors') ? 'INSTRUCTOR' : 'STUDENT';
 
-        // Upsert user — creates on first Cognito login, updates role from group on subsequent logins
         let user = await prisma.user.findFirst({ where: { email } });
         if (!user) {
           user = await prisma.user.create({
             data: {
               id: cognitoSub,
               email,
-              password: '', // No password needed for Cognito users
-              name: email.split('@')[0], // Default name from email
+              password: '',
+              name: email.split('@')[0],
               role,
             },
           });
@@ -55,5 +51,45 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
   } catch (error) {
     res.status(401).json({ message: 'Unauthorized' });
+  }
+};
+
+/**
+ * Optional authentication: attaches user if valid token exists,
+ * but proceeds without error if unauthenticated or token is missing.
+ */
+export const optionalAuthenticate = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return next();
+    }
+    const token = authHeader.split(' ')[1];
+
+    if (isCognitoConfigured()) {
+      try {
+        const cognitoPayload = await verifyCognitoToken(token);
+        const email = (cognitoPayload as any)['email'] || (cognitoPayload as any)['username'] || '';
+        const user = await prisma.user.findFirst({ where: { email } });
+        if (user) {
+          (req as any).user = user;
+          return next();
+        }
+      } catch {}
+    }
+
+    try {
+      const decoded = verifyToken(token) as any;
+      if (decoded?.id) {
+        const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+        if (user) {
+          (req as any).user = user;
+        }
+      }
+    } catch {}
+
+    next();
+  } catch {
+    next();
   }
 };

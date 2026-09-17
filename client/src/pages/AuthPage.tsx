@@ -25,8 +25,6 @@ import {
   isCognitoEnabled,
   cognitoSignIn,
   cognitoSignUp,
-  cognitoConfirmSignUp,
-  cognitoResendConfirmationCode,
   cognitoForgotPassword,
   cognitoConfirmPassword
 } from '../lib/cognito';
@@ -79,14 +77,6 @@ const AuthPage: React.FC = () => {
   const [forgotError, setForgotError] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  // Email verification modal (for unconfirmed users)
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmEmail, setConfirmEmail] = useState('');
-  const [confirmCode, setConfirmCode] = useState('');
-  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
-  const [confirmMsg, setConfirmMsg] = useState('');
-  const [confirmError, setConfirmError] = useState('');
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Error & loading state
   const [error, setError] = useState('');
@@ -186,10 +176,7 @@ const AuthPage: React.FC = () => {
       const errMsg = err?.message || '';
 
       if (errName === 'UserNotConfirmedException' || errMsg.includes('User is not confirmed')) {
-        setConfirmEmail(email.trim());
-        setConfirmPasswordInput(password);
-        setShowConfirmModal(true);
-        setError('Your account is registered but requires email confirmation code.');
+        setError('Account is unconfirmed. If you recently registered or need access, please use Forgot Password or contact support.');
       } else if (errName === 'UserNotFoundException' || errMsg.includes('User does not exist')) {
         setError('No account found with this email. Please click "Create Account" below.');
       } else if (errName === 'NotAuthorizedException' || errMsg.includes('Incorrect username or password')) {
@@ -263,21 +250,10 @@ const AuthPage: React.FC = () => {
           throw cognitoErr;
         }
 
-        try {
-          token = await cognitoSignIn(email.trim(), password);
-          localStorage.setItem('token', token);
-          const res = await client.get('/auth/me');
-          userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
-        } catch (signInErr: any) {
-          if (signInErr?.name === 'UserNotConfirmedException' || signInErr?.message?.includes('not confirmed')) {
-            setConfirmEmail(email.trim());
-            setConfirmPasswordInput(password);
-            setShowConfirmModal(true);
-            setLoading(false);
-            return;
-          }
-          throw signInErr;
-        }
+        token = await cognitoSignIn(email.trim(), password);
+        localStorage.setItem('token', token);
+        const res = await client.get('/auth/me');
+        userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
       } else {
         const res = await client.post('/auth/register', {
           email: email.trim(),
@@ -310,66 +286,15 @@ const AuthPage: React.FC = () => {
   };
 
   // ==========================================
-  // CONFIRM SIGNUP (VERIFICATION CODE)
-  // ==========================================
-  const handleConfirmAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setConfirmError('');
-    setConfirmMsg('');
-
-    if (!confirmCode.trim()) {
-      setConfirmError('Please enter the verification code sent to your email.');
-      return;
-    }
-
-    setConfirmLoading(true);
-    try {
-      await cognitoConfirmSignUp(confirmEmail.trim(), confirmCode.trim());
-      setConfirmMsg('Account verified successfully! Logging you in...');
-
-      if (confirmPasswordInput) {
-        const token = await cognitoSignIn(confirmEmail.trim(), confirmPasswordInput);
-        localStorage.setItem('token', token);
-        const res = await client.get('/auth/me');
-        const userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
-        login(token, userData);
-        setShowConfirmModal(false);
-        navigate('/student');
-      } else {
-        setTimeout(() => {
-          setShowConfirmModal(false);
-          setEmail(confirmEmail);
-          setIsLogin(true);
-        }, 1500);
-      }
-    } catch (err: any) {
-      setConfirmError(err?.message || 'Invalid or expired confirmation code.');
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
-  const handleResendCode = async () => {
-    setConfirmError('');
-    setConfirmMsg('');
-    try {
-      await cognitoResendConfirmationCode(confirmEmail.trim());
-      setConfirmMsg('A new verification code has been dispatched to your email.');
-    } catch (err: any) {
-      setConfirmError(err?.message || 'Could not resend code.');
-    }
-  };
-
-  // ==========================================
   // FORGOT / RESET PASSWORD SUBMISSION
   // ==========================================
-  const handleRequestReset = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRequestReset = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setForgotError('');
     setForgotMsg('');
 
-    if (!forgotEmail || !isValidEmail(forgotEmail)) {
-      setForgotError('Please enter a valid account email.');
+    if (!forgotEmail.trim() || !isValidEmail(forgotEmail.trim())) {
+      setForgotError('Please enter a valid email address.');
       return;
     }
 
@@ -386,7 +311,8 @@ const AuthPage: React.FC = () => {
         setForgotStep(2);
       }
     } catch (err: any) {
-      setForgotError(err?.message || err?.response?.data?.message || 'Error initiating password reset.');
+      const msg = err?.message || err?.response?.data?.message || 'Error initiating password reset.';
+      setForgotError(msg);
     } finally {
       setForgotLoading(false);
     }
@@ -409,7 +335,7 @@ const AuthPage: React.FC = () => {
     try {
       if (usingCognito) {
         await cognitoConfirmPassword(forgotEmail.trim(), resetCode.trim(), newPassword);
-        setForgotMsg('Password updated successfully in AWS Cognito! You can now log in.');
+        setForgotMsg('Password updated successfully! You can now log in.');
       } else {
         await client.post('/auth/reset-password', {
           email: forgotEmail.trim(),
@@ -425,7 +351,15 @@ const AuthPage: React.FC = () => {
         setIsLogin(true);
       }, 1800);
     } catch (err: any) {
-      setForgotError(err?.message || err?.response?.data?.message || 'Failed to reset password.');
+      const errName = err?.name || '';
+      const rawMsg = err?.message || err?.response?.data?.message || '';
+      if (errName === 'CodeMismatchException' || rawMsg.includes('Invalid code') || rawMsg.includes('mismatch')) {
+        setForgotError('Invalid verification code provided. Please check the code in your email or click "Request New Code" below.');
+      } else if (errName === 'ExpiredCodeException' || rawMsg.includes('expired')) {
+        setForgotError('Verification code has expired. Please click "Request New Code" below.');
+      } else {
+        setForgotError(rawMsg || 'Failed to reset password. Please try again.');
+      }
     } finally {
       setForgotLoading(false);
     }
@@ -1003,81 +937,29 @@ const AuthPage: React.FC = () => {
                 >
                   {forgotLoading ? 'Updating Password...' : 'Save New Password & Log In'}
                 </button>
+
+                <div className="flex justify-between items-center text-xs pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotStep(1);
+                      setForgotError('');
+                      setForgotMsg('');
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    ← Back / Request code again
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRequestReset()}
+                    className="text-indigo-400 hover:underline"
+                  >
+                    Resend Code
+                  </button>
+                </div>
               </form>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* EMAIL VERIFICATION / CONFIRMATION MODAL */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-indigo-400" />
-                <h3 className="font-bold text-white text-base">Verify Your Email</h3>
-              </div>
-              <button
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setConfirmError('');
-                  setConfirmMsg('');
-                }}
-                className="text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            {confirmError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
-                {confirmError}
-              </div>
-            )}
-
-            {confirmMsg && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
-                {confirmMsg}
-              </div>
-            )}
-
-            <form onSubmit={handleConfirmAccount} className="space-y-4">
-              <p className="text-xs text-slate-400 leading-relaxed">
-                AWS Cognito sent a 6-digit confirmation code to <strong className="text-white">{confirmEmail}</strong>. Enter it below to activate your account.
-              </p>
-
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">Verification Code</label>
-                <input
-                  type="text"
-                  required
-                  value={confirmCode}
-                  onChange={(e) => setConfirmCode(e.target.value)}
-                  placeholder="e.g. 123456"
-                  className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:ring-2 focus:ring-indigo-500 font-mono tracking-wider text-center text-sm font-bold"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={confirmLoading}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {confirmLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {confirmLoading ? 'Verifying...' : 'Verify & Continue'}
-              </button>
-
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={handleResendCode}
-                  className="text-xs text-indigo-400 hover:underline"
-                >
-                  Didn't receive the code? Resend Code
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, CheckCircle2, Code2 } from 'lucide-react';
 import client from '../api/client';
 import type { ProjectItem } from '../types';
+import { DEFAULT_PROJECTS } from '../data/defaultProjects';
 
 const ProjectsPage: React.FC = () => {
-  const [projects, setProjects] = useState<ProjectItem[]>([]);
-  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
+  const [projects, setProjects] = useState<ProjectItem[]>(DEFAULT_PROJECTS);
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(DEFAULT_PROJECTS[0]);
   const [githubUrl, setGithubUrl] = useState('');
   const [liveDemoUrl, setLiveDemoUrl] = useState('');
   const [notes, setNotes] = useState('');
@@ -15,12 +16,14 @@ const ProjectsPage: React.FC = () => {
   useEffect(() => {
     client.get('/projects')
       .then(res => {
-        setProjects(res.data);
-        if (res.data.length > 0) {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setProjects(res.data);
           setSelectedProject(res.data[0]);
         }
       })
-      .catch(err => console.error('Error fetching projects:', err));
+      .catch(err => {
+        console.warn('Backend /projects offline, defaulting to curated projects:', err);
+      });
   }, []);
 
   const handleSubmitProject = async (e: React.FormEvent) => {

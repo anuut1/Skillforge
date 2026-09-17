@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Play, Sparkles, FileText, CheckCircle2, Help
 import Sidebar from '../components/Layout/Sidebar';
 import AiTutorPanel from '../components/AiTutorPanel';
 import type { Lecture } from '../types';
+import { COURSES_CATALOG } from '../data/courseCatalog';
 
 const MOCK_LECTURES: Lecture[] = [
   { id: 'l1', courseId: 'c1', title: 'Introduction to Full-Stack Architecture', description: 'Overview of system layers, client-server lifecycle, and REST contracts.', videoUrl: '', duration: 15, order: 1, isCompleted: true },
@@ -18,25 +19,39 @@ const LecturePlayerPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'summary' | 'notes' | 'quiz' | 'practice'>('summary');
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
-  const currentIndex = MOCK_LECTURES.findIndex(l => l.id === lectureId);
-  const lecture = MOCK_LECTURES[currentIndex >= 0 ? currentIndex : 0];
+  const matchedCourse = COURSES_CATALOG.find(c => c.id === courseId);
+  const effectiveLectures: Lecture[] = matchedCourse && matchedCourse.lectures && matchedCourse.lectures.length > 0
+    ? matchedCourse.lectures.map((l, idx) => ({
+        id: l.id,
+        courseId: courseId || 'c1',
+        title: l.title,
+        description: `Deep-dive lecture module on ${l.title} with applied coding demonstrations and architectural breakdown.`,
+        videoUrl: '',
+        duration: l.duration,
+        order: idx + 1,
+        isCompleted: idx === 0
+      }))
+    : MOCK_LECTURES;
+
+  const currentIndex = effectiveLectures.findIndex(l => l.id === lectureId);
+  const lecture = effectiveLectures[currentIndex >= 0 ? currentIndex : 0] || MOCK_LECTURES[0];
   
   const hasPrev = currentIndex > 0;
-  const hasNext = currentIndex < MOCK_LECTURES.length - 1;
+  const hasNext = currentIndex < effectiveLectures.length - 1;
 
   const goPrev = () => {
-    if (hasPrev) navigate(`/courses/${courseId}/lectures/${MOCK_LECTURES[currentIndex - 1].id}`);
+    if (hasPrev) navigate(`/courses/${courseId}/lectures/${effectiveLectures[currentIndex - 1].id}`);
   };
 
   const goNext = () => {
-    if (hasNext) navigate(`/courses/${courseId}/lectures/${MOCK_LECTURES[currentIndex + 1].id}`);
+    if (hasNext) navigate(`/courses/${courseId}/lectures/${effectiveLectures[currentIndex + 1].id}`);
   };
 
   return (
     <div className="flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] bg-slate-950">
       {/* LEFT: Course Navigation Sidebar */}
       <div className="hidden md:block">
-        <Sidebar courseId={courseId || 'c1'} lectures={MOCK_LECTURES} />
+        <Sidebar courseId={courseId || 'c1'} lectures={effectiveLectures} />
       </div>
       
       {/* CENTER: Video Player, Controls & Tabbed Details */}

@@ -11,12 +11,72 @@ const RoadmapPage: React.FC = () => {
   const [recommendedNextTopic, setRecommendedNextTopic] = useState('SQL Indexing & B-Trees');
   const [whyRecommended, setWhyRecommended] = useState('Weakness detected in index execution plans.');
   const [roadmap, setRoadmap] = useState<RoadmapMilestone[]>([
-    { name: 'JAVA & OOP', progress: 82, status: 'MASTERED', time: 'Completed', weakAreas: [] },
-    { name: 'DATA STRUCTURES & ALGORITHMS', progress: 61, status: 'IN_PROGRESS', time: '14 hrs remaining', weakAreas: ['Trees', 'Graphs'] },
-    { name: 'DATABASES & SQL', progress: 70, status: 'IN_PROGRESS', time: '8 hrs remaining', weakAreas: ['Indexing', 'Transactions'] },
-    { name: 'OPERATING SYSTEMS', progress: 48, status: 'IN_PROGRESS', time: '12 hrs remaining', weakAreas: ['Virtual Memory', 'Deadlocks'] },
-    { name: 'COMPUTER NETWORKS', progress: 40, status: 'NEEDS_FOCUS', time: '10 hrs remaining', weakAreas: ['TCP/IP', 'HTTP/3'] },
-    { name: 'SYSTEM DESIGN & DISTRIBUTED SYSTEMS', progress: 20, status: 'LOCKED', time: '20 hrs remaining', weakAreas: ['Caching', 'Load Balancing'] }
+    {
+      name: 'JAVA & OOP',
+      progress: 82,
+      status: 'MASTERED',
+      time: 'Completed',
+      weakAreas: [],
+      completedTopics: ['Classes, Objects & Inheritance', 'Interface Segregation & Polymorphism', 'Java Collections (ArrayList, HashMap)', 'Exception Handling Hierarchies'],
+      remainingTopics: ['Virtual Threads (Project Loom)', 'JVM Flight Recorder Profiling'],
+      recommendedAction: 'Practice JVM Garbage Collection Tuning in Mock Interview',
+      actionLink: '/interview'
+    },
+    {
+      name: 'DATA STRUCTURES & ALGORITHMS',
+      progress: 61,
+      status: 'IN_PROGRESS',
+      time: '14 hrs remaining',
+      weakAreas: ['Trees', 'Graphs'],
+      completedTopics: ['Two Pointers & Sliding Window', 'Binary Search Boundary Checks', 'Linked List Reversals', 'Stack & Monotonic Queue'],
+      remainingTopics: ['Binary Tree DFS/BFS Traversal', 'Graph Topological Sort & Dijkstra', 'Dynamic Programming Tabulation'],
+      recommendedAction: 'Solve LeetCode Trees & Graphs Pattern Questions',
+      actionLink: '/playground'
+    },
+    {
+      name: 'DATABASES & SQL',
+      progress: 70,
+      status: 'IN_PROGRESS',
+      time: '8 hrs remaining',
+      weakAreas: ['Indexing', 'Transactions'],
+      completedTopics: ['Complex Joins & Aggregations', 'Group By & Window Functions', 'Foreign Key & Normalization (3NF)'],
+      remainingTopics: ['B-Tree Indexing Execution Plans', 'ACID Isolation Levels & MVCC', 'Distributed Sharding'],
+      recommendedAction: 'Study Relational Database Design & SQL Optimization Course',
+      actionLink: '/courses/course-dbms-sql-optimization'
+    },
+    {
+      name: 'OPERATING SYSTEMS',
+      progress: 48,
+      status: 'IN_PROGRESS',
+      time: '12 hrs remaining',
+      weakAreas: ['Virtual Memory', 'Deadlocks'],
+      completedTopics: ['Process vs Thread Lifecycles', 'CPU Scheduling Algorithms'],
+      remainingTopics: ['Page Tables & Translation Lookaside Buffer', 'Deadlock Detection & Bankers Algorithm', 'Linux Syscalls & File Descriptors'],
+      recommendedAction: 'Take OS Virtual Memory & Paging Diagnostics Assessment',
+      actionLink: '/courses/course-os-concurrency'
+    },
+    {
+      name: 'COMPUTER NETWORKS',
+      progress: 40,
+      status: 'NEEDS_FOCUS',
+      time: '10 hrs remaining',
+      weakAreas: ['TCP/IP', 'HTTP/3'],
+      completedTopics: ['OSI 7 Layer Encapsulation', 'DNS Lookup Hierarchy'],
+      remainingTopics: ['TCP 3-Way Handshake & Congestion Control', 'TLS 1.3 Cryptographic Handshake', 'HTTP/2 vs HTTP/3 QUIC Multiplexing'],
+      recommendedAction: 'Review Computer Networks & TCP/IP Protocol Suite',
+      actionLink: '/courses/course-computer-networks'
+    },
+    {
+      name: 'SYSTEM DESIGN & DISTRIBUTED SYSTEMS',
+      progress: 20,
+      status: 'LOCKED',
+      time: '20 hrs remaining',
+      weakAreas: ['Caching', 'Load Balancing'],
+      completedTopics: ['Monolith vs Microservices Trade-offs'],
+      remainingTopics: ['Distributed Caching (Redis/Memcached)', 'Consistent Hashing & Partitioning', 'CAP Theorem & Quorum Consensus', 'Rate Limiting & Circuit Breakers'],
+      recommendedAction: 'Simulate Architecture Interview on High-Throughput Systems',
+      actionLink: '/courses/course-system-design-interview'
+    }
   ]);
 
   useEffect(() => {
@@ -163,9 +223,68 @@ const RoadmapPage: React.FC = () => {
                   />
                 </div>
 
+                {/* What You Have Mastered vs What Is Left breakdown */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-800/80 text-xs">
+                  {/* COMPLETED / DONE */}
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/20 space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Completed & Verified ({m.completedTopics?.length || 0})
+                    </div>
+                    {m.completedTopics && m.completedTopics.length > 0 ? (
+                      <ul className="space-y-1 text-slate-300">
+                        {m.completedTopics.map((item, cIdx) => (
+                          <li key={cIdx} className="flex items-center gap-1.5 text-[11px]">
+                            <span className="w-1 h-1 rounded-full bg-emerald-400 shrink-0" />
+                            <span className="line-through text-slate-400">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 italic">No topics marked as mastered yet.</p>
+                    )}
+                  </div>
+
+                  {/* LEFT / REMAINING */}
+                  <div className="p-3 rounded-xl bg-indigo-950/20 border border-indigo-500/20 space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold text-indigo-300">
+                      <Clock className="h-3.5 w-3.5 text-indigo-400" /> What Is Left to Complete ({m.remainingTopics?.length || 0})
+                    </div>
+                    {m.remainingTopics && m.remainingTopics.length > 0 ? (
+                      <ul className="space-y-1 text-slate-300">
+                        {m.remainingTopics.map((item, rIdx) => (
+                          <li key={rIdx} className="flex items-center gap-1.5 text-[11px]">
+                            <span className="w-1 h-1 rounded-full bg-indigo-400 shrink-0" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-emerald-400 font-semibold">✓ All milestone topics completed!</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recommended Next Action for this Milestone */}
+                {m.recommendedAction && !isLocked && (
+                  <div className="mt-3.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-amber-400 font-bold">🎯 Next Step:</span>
+                      <span className="text-slate-200">{m.recommendedAction}</span>
+                    </div>
+                    {m.actionLink && (
+                      <Link
+                        to={m.actionLink}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors shrink-0"
+                      >
+                        Start Step <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    )}
+                  </div>
+                )}
+
                 {/* Weak Areas tags */}
                 {m.weakAreas && m.weakAreas.length > 0 && (
-                  <div className="flex items-center gap-2 mt-4 text-xs">
+                  <div className="flex items-center gap-2 mt-3 text-xs">
                     <span className="text-slate-500 flex items-center gap-1">
                       <AlertCircle className="h-3.5 w-3.5 text-amber-400" /> Focus areas:
                     </span>

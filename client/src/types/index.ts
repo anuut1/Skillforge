@@ -90,6 +90,14 @@ export interface SkillNode {
   level: number;
   status: 'STRONG' | 'IMPROVING' | 'GAP' | 'RECOMMENDED';
   description?: string;
+  bridgeCourseId?: string;
+  bridgeCourseTitle?: string;
+  materials?: {
+    type: 'COURSE' | 'CHEATSHEET' | 'PRACTICE' | 'DOC';
+    title: string;
+    link: string;
+    durationOrCount: string;
+  }[];
 }
 
 export interface RoadmapMilestone {
@@ -98,6 +106,10 @@ export interface RoadmapMilestone {
   status: 'MASTERED' | 'IN_PROGRESS' | 'NEEDS_FOCUS' | 'LOCKED';
   time: string;
   weakAreas: string[];
+  completedTopics?: string[];
+  remainingTopics?: string[];
+  recommendedAction?: string;
+  actionLink?: string;
 }
 
 export interface CodingProblem {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, XCircle, Sparkles, ArrowRight, Layers, ShieldCheck, Zap } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Sparkles, ArrowRight, Layers, ShieldCheck, Zap, BookOpen, FileText, Code2, ExternalLink } from 'lucide-react';
 import client from '../api/client';
 import RecommendationFeedbackButton from '../components/common/RecommendationFeedbackButton';
 import type { SkillNode } from '../types';
@@ -11,29 +11,187 @@ const SkillGapPage: React.FC = () => {
   const [summary, setSummary] = useState('You are 67% ready for a Backend Developer role.');
   const [categories, setCategories] = useState<Record<string, SkillNode[]>>({
     'Java & Core Architecture': [
-      { id: 's1', name: 'OOP Principles', level: 88, status: 'STRONG', description: 'Polymorphism, abstraction, encapsulation' },
-      { id: 's2', name: 'Collections Framework', level: 82, status: 'STRONG', description: 'Lists, Sets, Maps, Iterators' },
-      { id: 's3', name: 'Multithreading & Concurrency', level: 58, status: 'IMPROVING', description: 'Thread pools, volatile, locks' },
-      { id: 's4', name: 'JVM Memory & Garbage Collection', level: 50, status: 'IMPROVING', description: 'Heap, Metaspace, GC algorithms' }
+      {
+        id: 's1',
+        name: 'OOP Principles',
+        level: 88,
+        status: 'STRONG',
+        description: 'Polymorphism, abstraction, encapsulation, and SOLID architecture.',
+        bridgeCourseId: 'course-java-programming',
+        bridgeCourseTitle: 'Mastering Java & OOP for High-Scale Backends',
+        materials: [
+          { type: 'CHEATSHEET', title: 'SOLID Principles in Clean Java Design Cheatsheet', link: '/courses/course-java-programming', durationOrCount: '10 min read' },
+          { type: 'PRACTICE', title: 'Refactoring Codebase to Strategy Pattern Challenge', link: '/playground', durationOrCount: '3 problems' }
+        ]
+      },
+      {
+        id: 's2',
+        name: 'Collections Framework',
+        level: 82,
+        status: 'STRONG',
+        description: 'Lists, Sets, Maps, Iterators, and Concurrent Collections.',
+        bridgeCourseId: 'course-java-programming',
+        bridgeCourseTitle: 'Mastering Java & OOP for High-Scale Backends',
+        materials: [
+          { type: 'DOC', title: 'HashMap Collision Treeification Internals Guide', link: '/courses/course-java-programming', durationOrCount: '15 min read' }
+        ]
+      },
+      {
+        id: 's3',
+        name: 'Multithreading & Concurrency',
+        level: 58,
+        status: 'IMPROVING',
+        description: 'Thread pools, volatile, locks, synchronization, and race conditions.',
+        bridgeCourseId: 'course-java-programming',
+        bridgeCourseTitle: 'Mastering Java & OOP for High-Scale Backends',
+        materials: [
+          { type: 'COURSE', title: 'Module 4: Concurrency & Virtual Threads in Practice', link: '/courses/course-java-programming/lectures/jv-l4', durationOrCount: '60 mins' },
+          { type: 'CHEATSHEET', title: 'Java Concurrency Utilities: CountDownLatch vs CyclicBarrier', link: '/courses/course-java-programming', durationOrCount: '8 min read' },
+          { type: 'PRACTICE', title: 'Producer-Consumer Thread Synchronization Exercise', link: '/playground', durationOrCount: '1 coding challenge' }
+        ]
+      },
+      {
+        id: 's4',
+        name: 'JVM Memory & Garbage Collection',
+        level: 50,
+        status: 'IMPROVING',
+        description: 'Heap, Metaspace, GC algorithms (G1, ZGC), and heap dump analysis.',
+        bridgeCourseId: 'course-java-programming',
+        bridgeCourseTitle: 'Mastering Java & OOP for High-Scale Backends',
+        materials: [
+          { type: 'COURSE', title: 'Module 5: JVM Memory Architecture: Heap, Stack & G1 GC', link: '/courses/course-java-programming/lectures/jv-l5', durationOrCount: '55 mins' },
+          { type: 'DOC', title: 'Debugging OutOfMemoryError (OOM) via VisualVM & JConsole', link: '/courses/course-java-programming', durationOrCount: '12 min guide' }
+        ]
+      }
     ],
     'Databases & Storage': [
-      { id: 's5', name: 'SQL Queries & Aggregations', level: 85, status: 'STRONG', description: 'GROUP BY, HAVING, subqueries' },
-      { id: 's6', name: 'Table Joins & Relationships', level: 65, status: 'IMPROVING', description: 'INNER, LEFT, CROSS joins' },
-      { id: 's7', name: 'Database Indexing (B-Trees)', level: 32, status: 'GAP', description: 'Clustered indexes, selectivity' },
-      { id: 's8', name: 'Transactions & ACID Guarantees', level: 38, status: 'GAP', description: 'Isolation levels, 2-phase commit' }
+      {
+        id: 's5',
+        name: 'SQL Queries & Aggregations',
+        level: 85,
+        status: 'STRONG',
+        description: 'GROUP BY, HAVING, subqueries, and window functions.',
+        bridgeCourseId: 'course-dbms-sql-optimization',
+        bridgeCourseTitle: 'Relational Database Design & SQL Optimization',
+        materials: [
+          { type: 'PRACTICE', title: 'Advanced Window Functions (RANK, DENSE_RANK, LEAD, LAG)', link: '/playground', durationOrCount: '4 queries' }
+        ]
+      },
+      {
+        id: 's6',
+        name: 'Table Joins & Relationships',
+        level: 65,
+        status: 'IMPROVING',
+        description: 'INNER, LEFT, CROSS joins, and foreign key cascading.',
+        bridgeCourseId: 'course-dbms-sql-optimization',
+        bridgeCourseTitle: 'Relational Database Design & SQL Optimization',
+        materials: [
+          { type: 'COURSE', title: 'Module 1: Relational Modeling & Normalization: Eliminating Anomalies', link: '/courses/course-dbms-sql-optimization/lectures/db-l1', durationOrCount: '40 mins' }
+        ]
+      },
+      {
+        id: 's7',
+        name: 'Database Indexing (B-Trees)',
+        level: 32,
+        status: 'GAP',
+        description: 'Clustered vs non-clustered indexes, selectivity, and composite indexes.',
+        bridgeCourseId: 'course-dbms-sql-optimization',
+        bridgeCourseTitle: 'Relational Database Design & SQL Optimization',
+        materials: [
+          { type: 'COURSE', title: 'Module 2: Deep Dive: B-Tree vs Hash vs GiST Index Mechanics', link: '/courses/course-dbms-sql-optimization/lectures/db-l2', durationOrCount: '55 mins' },
+          { type: 'COURSE', title: 'Module 3: Reading EXPLAIN ANALYZE & Eliminating Sequential Scans', link: '/courses/course-dbms-sql-optimization/lectures/db-l3', durationOrCount: '50 mins' },
+          { type: 'CHEATSHEET', title: 'PostgreSQL Compound Index Leftmost Prefix Rules', link: '/courses/course-dbms-sql-optimization', durationOrCount: '5 min read' }
+        ]
+      },
+      {
+        id: 's8',
+        name: 'Transactions & ACID Guarantees',
+        level: 38,
+        status: 'GAP',
+        description: 'Isolation levels (Read Committed to Serializable), MVCC, and deadlocks.',
+        bridgeCourseId: 'course-dbms-sql-optimization',
+        bridgeCourseTitle: 'Relational Database Design & SQL Optimization',
+        materials: [
+          { type: 'COURSE', title: 'Module 4: ACID Guarantees, MVCC & Deadlocks in High Concurrency', link: '/courses/course-dbms-sql-optimization/lectures/db-l4', durationOrCount: '45 mins' },
+          { type: 'PRACTICE', title: 'Banking Ledger Transaction Simulation Capstone', link: '/projects', durationOrCount: 'Full Capstone' }
+        ]
+      }
     ],
     'Backend & Microservices': [
-      { id: 's9', name: 'RESTful API Design', level: 78, status: 'STRONG', description: 'HTTP verbs, URI patterns, error models' },
-      { id: 's10', name: 'Authentication & JWT Security', level: 35, status: 'GAP', description: 'Stateless auth, refresh tokens' },
-      { id: 's11', name: 'Spring Boot Architecture', level: 30, status: 'GAP', description: 'IoC, Spring MVC, Spring Data JPA' },
-      { id: 's12', name: 'Microservices & Message Queues', level: 25, status: 'GAP', description: 'Event-driven, RabbitMQ, Kafka' }
+      {
+        id: 's9',
+        name: 'RESTful API Design',
+        level: 78,
+        status: 'STRONG',
+        description: 'HTTP verbs, URI patterns, error models (RFC 7807), and pagination.',
+        bridgeCourseId: 'course-rest-api-design',
+        bridgeCourseTitle: 'Production REST API Design & Security',
+        materials: [
+          { type: 'CHEATSHEET', title: 'RESTful HTTP Status Codes & Idempotency Rules', link: '/courses/course-rest-api-design', durationOrCount: '5 min read' }
+        ]
+      },
+      {
+        id: 's10',
+        name: 'Authentication & JWT Security',
+        level: 35,
+        status: 'GAP',
+        description: 'Stateless auth, refresh token rotation, OAuth2, and OWASP API security.',
+        bridgeCourseId: 'course-rest-api-design',
+        bridgeCourseTitle: 'Production REST API Design & Security',
+        materials: [
+          { type: 'COURSE', title: 'Module 4: OWASP API Top 10: Defending Against BOLA & Token Forgery', link: '/courses/course-rest-api-design/lectures/rest-l4', durationOrCount: '50 mins' },
+          { type: 'DOC', title: 'Secure Refresh Token Storage (HttpOnly Cookies vs Memory)', link: '/courses/course-rest-api-design', durationOrCount: '10 min read' }
+        ]
+      },
+      {
+        id: 's11',
+        name: 'Spring Boot Architecture',
+        level: 30,
+        status: 'GAP',
+        description: 'IoC container, Spring MVC, Spring Data JPA, and actuator monitoring.',
+        bridgeCourseId: 'course-spring-boot-microservices',
+        bridgeCourseTitle: 'Spring Boot 3 & Microservices Architecture',
+        materials: [
+          { type: 'COURSE', title: 'Module 1: Spring Core: IoC & Dependency Injection Internals', link: '/courses/course-spring-boot-microservices/lectures/sb-l1', durationOrCount: '40 mins' },
+          { type: 'COURSE', title: 'Module 2: Spring Data JPA: Entity Mappings & N+1 Query Fixes', link: '/courses/course-spring-boot-microservices/lectures/sb-l2', durationOrCount: '50 mins' },
+          { type: 'PRACTICE', title: 'Build Production Banking REST API Capstone', link: '/projects', durationOrCount: 'Full Project' }
+        ]
+      },
+      {
+        id: 's12',
+        name: 'Microservices & Message Queues',
+        level: 25,
+        status: 'GAP',
+        description: 'Event-driven architecture, Apache Kafka, RabbitMQ, and circuit breakers.',
+        bridgeCourseId: 'course-spring-boot-microservices',
+        bridgeCourseTitle: 'Spring Boot 3 & Microservices Architecture',
+        materials: [
+          { type: 'COURSE', title: 'Module 4: Event-Driven Microservices with Apache Kafka', link: '/courses/course-spring-boot-microservices/lectures/sb-l4', durationOrCount: '60 mins' },
+          { type: 'COURSE', title: 'Module 5: API Gateway, Eureka & Resilience4j Circuit Breakers', link: '/courses/course-spring-boot-microservices/lectures/sb-l5', durationOrCount: '55 mins' }
+        ]
+      }
     ]
   });
 
   const [recommendations, setRecommendations] = useState([
-    { topic: 'SQL Indexing & Query Optimization', reason: 'Critical gap in database performance required for backend positions.' },
-    { topic: 'REST API Authentication (JWT)', reason: 'High-priority missing skill on industry benchmark tests.' },
-    { topic: 'Spring Boot & Microservices', reason: 'High demand in recent job descriptions matching your career goal.' }
+    {
+      topic: 'SQL Indexing & Query Optimization',
+      reason: 'Critical gap in database performance required for backend positions.',
+      actionLink: '/courses/course-dbms-sql-optimization',
+      actionTitle: 'Launch Indexing Course'
+    },
+    {
+      topic: 'REST API Authentication (JWT)',
+      reason: 'High-priority missing skill on industry benchmark tests.',
+      actionLink: '/courses/course-rest-api-design',
+      actionTitle: 'Launch API Security Course'
+    },
+    {
+      topic: 'Spring Boot & Microservices',
+      reason: 'High demand in recent job descriptions matching your career goal.',
+      actionLink: '/courses/course-spring-boot-microservices',
+      actionTitle: 'Launch Microservices Track'
+    }
   ]);
 
   useEffect(() => {
@@ -199,6 +357,46 @@ const SkillGapPage: React.FC = () => {
                           style={{ width: `${skill.level}%` }}
                         />
                       </div>
+
+                      {/* Learning Materials & Bridge Module for what they are lacking */}
+                      {skill.materials && skill.materials.length > 0 && (
+                        <div className="mt-3.5 pt-3.5 border-t border-slate-800/80 ml-0 sm:ml-7 space-y-2">
+                          <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <BookOpen className="h-3.5 w-3.5 text-indigo-400" />
+                            {isGap ? 'Materials to Close This Critical Gap:' : 'Curated Study & Practice Materials:'}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {skill.materials.map((mat, mIdx) => (
+                              <Link
+                                key={mIdx}
+                                to={mat.link}
+                                className="p-2.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800/80 hover:border-indigo-500/40 transition-all flex items-center justify-between group"
+                              >
+                                <div className="flex items-center gap-2 min-w-0 pr-2">
+                                  {mat.type === 'COURSE' ? (
+                                    <BookOpen className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                                  ) : mat.type === 'CHEATSHEET' ? (
+                                    <FileText className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                  ) : mat.type === 'PRACTICE' ? (
+                                    <Code2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                                  ) : (
+                                    <ExternalLink className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-slate-200 group-hover:text-indigo-300 truncate">
+                                      {mat.title}
+                                    </p>
+                                    <span className="text-[10px] text-slate-500 font-mono">
+                                      {mat.type} • {mat.durationOrCount}
+                                    </span>
+                                  </div>
+                                </div>
+                                <ArrowRight className="h-3 w-3 text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -233,10 +431,10 @@ const SkillGapPage: React.FC = () => {
                   <h3 className="font-semibold text-white mb-1.5">{rec.topic}</h3>
                   <p className="text-xs text-slate-400 leading-relaxed mb-3">{rec.reason}</p>
                   <Link
-                    to="/catalog"
+                    to={(rec as any).actionLink || '/catalog'}
                     className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
                   >
-                    Start module <ArrowRight className="h-3 w-3" />
+                    {(rec as any).actionTitle || 'Start module'} <ArrowRight className="h-3 w-3" />
                   </Link>
                 </div>
               ))}

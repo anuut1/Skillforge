@@ -200,12 +200,72 @@ export const getPersonalizedRoadmap = async (req: Request, res: Response) => {
     const goal = profile?.careerGoal || 'Backend Developer';
 
     const defaultRoadmap = [
-      { name: 'JAVA & OOP', progress: 82, status: 'MASTERED', time: 'Completed', weakAreas: [] },
-      { name: 'DATA STRUCTURES & ALGORITHMS', progress: 61, status: 'IN_PROGRESS', time: '14 hrs remaining', weakAreas: ['Trees', 'Graphs'] },
-      { name: 'DATABASES & SQL', progress: 70, status: 'IN_PROGRESS', time: '8 hrs remaining', weakAreas: ['Indexing', 'Transactions'] },
-      { name: 'OPERATING SYSTEMS', progress: 48, status: 'IN_PROGRESS', time: '12 hrs remaining', weakAreas: ['Virtual Memory', 'Deadlocks'] },
-      { name: 'COMPUTER NETWORKS', progress: 40, status: 'NEEDS_FOCUS', time: '10 hrs remaining', weakAreas: ['TCP/IP', 'HTTP/3'] },
-      { name: 'SYSTEM DESIGN & DISTRIBUTED SYSTEMS', progress: 20, status: 'LOCKED', time: '20 hrs remaining', weakAreas: ['Caching', 'Load Balancing'] }
+      {
+        name: 'JAVA & OOP',
+        progress: 82,
+        status: 'MASTERED',
+        time: 'Completed',
+        weakAreas: [],
+        completedTopics: ['Classes, Objects & Inheritance', 'Interface Segregation & Polymorphism', 'Java Collections (ArrayList, HashMap)', 'Exception Handling Hierarchies'],
+        remainingTopics: ['Virtual Threads (Project Loom)', 'JVM Flight Recorder Profiling'],
+        recommendedAction: 'Practice JVM Garbage Collection Tuning in Mock Interview',
+        actionLink: '/interview'
+      },
+      {
+        name: 'DATA STRUCTURES & ALGORITHMS',
+        progress: 61,
+        status: 'IN_PROGRESS',
+        time: '14 hrs remaining',
+        weakAreas: ['Trees', 'Graphs'],
+        completedTopics: ['Two Pointers & Sliding Window', 'Binary Search Boundary Checks', 'Linked List Reversals', 'Stack & Monotonic Queue'],
+        remainingTopics: ['Binary Tree DFS/BFS Traversal', 'Graph Topological Sort & Dijkstra', 'Dynamic Programming Tabulation'],
+        recommendedAction: 'Solve LeetCode Trees & Graphs Pattern Questions',
+        actionLink: '/playground'
+      },
+      {
+        name: 'DATABASES & SQL',
+        progress: 70,
+        status: 'IN_PROGRESS',
+        time: '8 hrs remaining',
+        weakAreas: ['Indexing', 'Transactions'],
+        completedTopics: ['Complex Joins & Aggregations', 'Group By & Window Functions', 'Foreign Key & Normalization (3NF)'],
+        remainingTopics: ['B-Tree Indexing Execution Plans', 'ACID Isolation Levels & MVCC', 'Distributed Sharding'],
+        recommendedAction: 'Study Relational Database Design & SQL Optimization Course',
+        actionLink: '/courses/course-dbms-sql-optimization'
+      },
+      {
+        name: 'OPERATING SYSTEMS',
+        progress: 48,
+        status: 'IN_PROGRESS',
+        time: '12 hrs remaining',
+        weakAreas: ['Virtual Memory', 'Deadlocks'],
+        completedTopics: ['Process vs Thread Lifecycles', 'CPU Scheduling Algorithms'],
+        remainingTopics: ['Page Tables & Translation Lookaside Buffer', 'Deadlock Detection & Bankers Algorithm', 'Linux Syscalls & File Descriptors'],
+        recommendedAction: 'Take OS Virtual Memory & Paging Diagnostics Assessment',
+        actionLink: '/courses/course-os-concurrency'
+      },
+      {
+        name: 'COMPUTER NETWORKS',
+        progress: 40,
+        status: 'NEEDS_FOCUS',
+        time: '10 hrs remaining',
+        weakAreas: ['TCP/IP', 'HTTP/3'],
+        completedTopics: ['OSI 7 Layer Encapsulation', 'DNS Lookup Hierarchy'],
+        remainingTopics: ['TCP 3-Way Handshake & Congestion Control', 'TLS 1.3 Cryptographic Handshake', 'HTTP/2 vs HTTP/3 QUIC Multiplexing'],
+        recommendedAction: 'Review Computer Networks & TCP/IP Protocol Suite',
+        actionLink: '/courses/course-computer-networks'
+      },
+      {
+        name: 'SYSTEM DESIGN & DISTRIBUTED SYSTEMS',
+        progress: 20,
+        status: 'LOCKED',
+        time: '20 hrs remaining',
+        weakAreas: ['Caching', 'Load Balancing'],
+        completedTopics: ['Monolith vs Microservices Trade-offs'],
+        remainingTopics: ['Distributed Caching (Redis/Memcached)', 'Consistent Hashing & Partitioning', 'CAP Theorem & Quorum Consensus', 'Rate Limiting & Circuit Breakers'],
+        recommendedAction: 'Simulate Architecture Interview on High-Throughput Systems',
+        actionLink: '/courses/course-system-design-interview'
+      }
     ];
 
     res.json({

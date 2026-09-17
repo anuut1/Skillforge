@@ -80,7 +80,17 @@ export async function cognitoConfirmPassword(email: string, code: string, newPas
   });
 }
 
-export async function cognitoSignIn(email: string, password: string): Promise<string> {
+export interface CognitoSignInResult {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: 'student' | 'instructor';
+  };
+}
+
+export async function cognitoSignIn(email: string, password: string): Promise<CognitoSignInResult> {
   if (!isCognitoEnabled()) throw new Error('Cognito not configured');
   const { CognitoUserPool, CognitoUser, AuthenticationDetails } = await import('amazon-cognito-identity-js');
   const userPool = new CognitoUserPool(POOL_DATA);
@@ -89,7 +99,23 @@ export async function cognitoSignIn(email: string, password: string): Promise<st
     const user = new CognitoUser({ Username: email, Pool: userPool });
     const authDetails = new AuthenticationDetails({ Username: email, Password: password });
     user.authenticateUser(authDetails, {
-      onSuccess: (session) => resolve(session.getAccessToken().getJwtToken()),
+      onSuccess: (session) => {
+        const token = session.getAccessToken().getJwtToken();
+        const payload: any = session.getIdToken()?.decodePayload() || {};
+        const groups: string[] = payload['cognito:groups'] || [];
+        const isInstructor = groups.some((g: string) => g.toLowerCase().includes('instructor'));
+        const rawName = payload.name || email.split('@')[0];
+        const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+        resolve({
+          token,
+          user: {
+            id: payload.sub || user.getUsername(),
+            email: payload.email || email,
+            name: formattedName,
+            role: isInstructor ? 'instructor' : 'student',
+          }
+        });
+      },
       onFailure: (err) => reject(err),
     });
   });

@@ -151,10 +151,19 @@ const AuthPage: React.FC = () => {
       let userData: User;
 
       if (usingCognito) {
-        token = await cognitoSignIn(email, password);
+        const auth = await cognitoSignIn(email, password);
+        token = auth.token;
+        userData = auth.user;
         localStorage.setItem('token', token);
-        const res = await client.get('/auth/me');
-        userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+
+        try {
+          const res = await client.get('/auth/me');
+          if (res?.data?.user) {
+            userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+          }
+        } catch (apiErr) {
+          console.warn('Backend API profile sync bypassed, continuing with Cognito profile:', apiErr);
+        }
       } else {
         const res = await client.post('/auth/login', { email: email.trim(), password });
         token = res.data.token;
@@ -250,10 +259,23 @@ const AuthPage: React.FC = () => {
           throw cognitoErr;
         }
 
-        token = await cognitoSignIn(email.trim(), password);
+        const auth = await cognitoSignIn(email.trim(), password);
+        token = auth.token;
+        userData = {
+          ...auth.user,
+          name: name.trim(),
+          role: role.toLowerCase() as Role,
+        };
         localStorage.setItem('token', token);
-        const res = await client.get('/auth/me');
-        userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+
+        try {
+          const res = await client.get('/auth/me');
+          if (res?.data?.user) {
+            userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+          }
+        } catch (apiErr) {
+          console.warn('Backend API profile sync bypassed on signup:', apiErr);
+        }
       } else {
         const res = await client.post('/auth/register', {
           email: email.trim(),

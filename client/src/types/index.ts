@@ -93,10 +93,12 @@ export interface SkillNode {
   bridgeCourseId?: string;
   bridgeCourseTitle?: string;
   materials?: {
-    type: 'COURSE' | 'CHEATSHEET' | 'PRACTICE' | 'DOC';
+    type: 'COURSE' | 'CHEATSHEET' | 'PRACTICE' | 'DOC' | 'VIDEO' | 'STRIVER' | 'COURSERA' | 'UDEMY' | 'LEETCODE';
     title: string;
     link: string;
     durationOrCount: string;
+    leetcodeSlug?: string;
+    badgeText?: string;
   }[];
 }
 

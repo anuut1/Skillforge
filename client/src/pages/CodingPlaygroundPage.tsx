@@ -15,7 +15,8 @@ import {
   ChevronRight,
   RotateCcw,
   Layers,
-  ArrowLeft
+  ArrowLeft,
+  ExternalLink
 } from 'lucide-react';
 import client from '../api/client';
 import type { CodingProblem } from '../types';
@@ -266,6 +267,16 @@ const CodingPlaygroundPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <a
+              href={`https://leetcode.com/problems/${problem.slug}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors"
+              title="Practice this question directly on LeetCode"
+            >
+              <span>Solve on LeetCode</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
             <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
               problem.difficulty === 'Easy'
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
@@ -831,15 +842,27 @@ const CodingPlaygroundPage: React.FC = () => {
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-right">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/coding/${prob.slug}`);
-                              }}
-                              className="px-3 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-xs transition-colors"
-                            >
-                              {prob.userStatus === 'Solved' ? 'Review' : 'Solve'}
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <a
+                                href={`https://leetcode.com/problems/${prob.slug}/`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 transition-colors border border-slate-700"
+                                title="Open on LeetCode"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/coding/${prob.slug}`);
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-xs transition-colors"
+                              >
+                                {prob.userStatus === 'Solved' ? 'Review' : 'Solve'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))

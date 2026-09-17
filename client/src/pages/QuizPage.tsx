@@ -4,10 +4,12 @@ import { Award } from 'lucide-react';
 import QuizQuestion from '../components/QuizQuestion';
 import type { Quiz } from '../types';
 
-const MOCK_QUIZ: Quiz = {
-  id: 'q1',
+import { ALL_QUIZZES } from '../data/quizzesCatalog';
+
+const DEFAULT_QUIZ: Quiz = {
+  id: 'general-quiz',
   courseId: 'c1',
-  title: 'React Fundamentals Quiz',
+  title: 'Technical Fundamentals Quiz',
   questions: [
     {
       id: 'qq1',
@@ -28,16 +30,23 @@ const MOCK_QUIZ: Quiz = {
     },
     {
       id: 'qq3',
-      text: 'What does JSX stand for?',
-      options: ['JavaScript XML', 'Java Syntax Extension', 'JSON X', 'JavaScript eXecution'],
+      text: 'What is the primary benefit of B-Tree indexing in relational databases?',
+      options: ['Logarithmic search and ordered range scan', 'Eliminates storage need', 'Ensures 100% memory caching', 'Replaces foreign keys'],
       correctOptionIndex: 0,
     }
   ]
 };
 
 const QuizPage: React.FC = () => {
-  const { courseId } = useParams();
+  const { courseId, quizId } = useParams();
   const navigate = useNavigate();
+
+  const activeQuiz: Quiz = (quizId && ALL_QUIZZES[quizId])
+    || (courseId && ALL_QUIZZES[`quiz-${courseId}`])
+    || (quizId && ALL_QUIZZES[quizId.replace(/^quiz-/, '')])
+    || (quizId === 'cs-quiz' ? ALL_QUIZZES['cs-quiz'] : null)
+    || DEFAULT_QUIZ;
+
   
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -49,7 +58,7 @@ const QuizPage: React.FC = () => {
 
   const handleSubmit = () => {
     let currentScore = 0;
-    MOCK_QUIZ.questions.forEach(q => {
+    activeQuiz.questions.forEach(q => {
       if (answers[q.id] === q.correctOptionIndex) {
         currentScore++;
       }
@@ -59,7 +68,7 @@ const QuizPage: React.FC = () => {
   };
 
   const answeredCount = Object.keys(answers).length;
-  const totalCount = MOCK_QUIZ.questions.length;
+  const totalCount = activeQuiz.questions.length;
   const progress = (answeredCount / totalCount) * 100;
 
   return (
@@ -67,7 +76,7 @@ const QuizPage: React.FC = () => {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-4">{MOCK_QUIZ.title}</h1>
+          <h1 className="text-3xl font-bold text-white mb-4">{activeQuiz.title}</h1>
           
           {/* Progress Bar */}
           {!isSubmitted && (
@@ -90,17 +99,17 @@ const QuizPage: React.FC = () => {
             <p className="text-slate-400 mb-6">You scored {score} out of {totalCount}</p>
             <div className="flex justify-center gap-4">
               <button 
-                onClick={() => navigate(`/courses/${courseId}`)}
+                onClick={() => navigate(courseId ? `/courses/${courseId}` : '/placement-hub')}
                 className="px-6 py-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors font-medium border border-slate-700"
               >
-                Back to Course
+                {courseId ? 'Back to Course' : 'Back to Placement Hub'}
               </button>
             </div>
           </div>
         )}
 
         <div className="space-y-6">
-          {MOCK_QUIZ.questions.map((question, index) => (
+          {activeQuiz.questions.map((question, index) => (
             <QuizQuestion
               key={question.id}
               index={index}

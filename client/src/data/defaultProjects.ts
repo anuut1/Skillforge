@@ -1,6 +1,11 @@
 import type { ProjectItem } from '../types';
 
-export const DEFAULT_PROJECTS: ProjectItem[] = [
+export interface ProjectCurriculumItem extends ProjectItem {
+  domain: string;
+  targetRoles: string[];
+}
+
+export const DEFAULT_PROJECTS: ProjectCurriculumItem[] = [
   {
     id: 'prj-banking-rest-api',
     title: 'Production Banking REST API with Spring Boot & PostgreSQL',
@@ -22,7 +27,9 @@ export const DEFAULT_PROJECTS: ProjectItem[] = [
       'Milestone 5: Docker compose and automated Postman test collection'
     ]),
     expectedOutcome: 'A deployable banking microservice capable of processing 100+ concurrent transfer transactions without race conditions.',
-    relatedSkillName: 'Spring Boot & Microservices'
+    relatedSkillName: 'Spring Boot & Microservices',
+    domain: 'Backend Development',
+    targetRoles: ['Backend Developer', 'Java Developer', 'Software Engineer']
   },
   {
     id: 'prj-expense-tracker',
@@ -44,7 +51,9 @@ export const DEFAULT_PROJECTS: ProjectItem[] = [
       'Milestone 4: CSV/PDF export capability'
     ]),
     expectedOutcome: 'A production-ready web application providing responsive financial tracking.',
-    relatedSkillName: 'React & Frontend State'
+    relatedSkillName: 'React & Frontend State',
+    domain: 'Full Stack Web Development',
+    targetRoles: ['Full Stack Developer', 'Frontend Developer', 'Software Engineer']
   },
   {
     id: 'prj-distributed-task-queue',
@@ -66,7 +75,9 @@ export const DEFAULT_PROJECTS: ProjectItem[] = [
       'Milestone 4: Real-time status dashboard via WebSockets'
     ]),
     expectedOutcome: 'A resilient asynchronous execution engine processing 5,000+ jobs/min with automated failure isolation.',
-    relatedSkillName: 'Microservices & Message Queues'
+    relatedSkillName: 'Microservices & Message Queues',
+    domain: 'Systems & Backend Architecture',
+    targetRoles: ['Backend Developer', 'Systems Engineer', 'Cloud / DevOps Engineer']
   },
   {
     id: 'prj-rag-knowledge-base',
@@ -88,6 +99,55 @@ export const DEFAULT_PROJECTS: ProjectItem[] = [
       'Milestone 4: Streaming API endpoint and test query suite'
     ]),
     expectedOutcome: 'A domain-specific search agent delivering sub-second answers grounded in uploaded enterprise knowledge bases.',
-    relatedSkillName: 'Generative AI & LLM Engineering'
+    relatedSkillName: 'Generative AI & LLM Engineering',
+    domain: 'AI & Machine Learning',
+    targetRoles: ['AI / ML Engineer', 'Data Scientist', 'Python Developer']
+  },
+  {
+    id: 'prj-ecommerce-microservices',
+    title: 'Cloud-Native E-Commerce Platform & Order Orchestrator',
+    description: 'Build a distributed e-commerce backend with decoupled catalog, cart, checkout, payment webhook handlers, and inventory reservations.',
+    difficulty: 'Advanced',
+    technologies: JSON.stringify(['TypeScript', 'Node.js / Express', 'MongoDB / PostgreSQL', 'Docker', 'AWS S3']),
+    requirements: JSON.stringify([
+      'State machine order processing: Created -> Paid -> Shipped -> Completed',
+      'Idempotent payment webhook consumption preventing duplicate charges',
+      'Optimistic locking on inventory quantity during flash checkout peaks',
+      'Full API documentation with Swagger/OpenAPI specifications',
+      'Containerized development environment via Docker Compose'
+    ]),
+    milestones: JSON.stringify([
+      'Milestone 1: Product catalog, SKU variations, and full-text search',
+      'Milestone 2: Cart persistence and session cache with TTL expiration',
+      'Milestone 3: Checkout transaction with payment intent integration',
+      'Milestone 4: Webhook listener and order confirmation dispatch'
+    ]),
+    expectedOutcome: 'High-availability retail checkout pipeline prepared for high concurrency placement interviews.',
+    relatedSkillName: 'Cloud Architecture & Web Services',
+    domain: 'Full Stack Web Development',
+    targetRoles: ['Full Stack Developer', 'Software Engineer', 'Backend Developer']
+  },
+  {
+    id: 'prj-cloud-observability-pipeline',
+    title: 'Cloud Infrastructure Monitoring & Telemetry Visualizer',
+    description: 'Deploy an automated telemetry collector consuming real-time system metrics, error spikes, and container health with alert webhooks.',
+    difficulty: 'Intermediate',
+    technologies: JSON.stringify(['Go / Python', 'Prometheus', 'Grafana', 'Docker', 'AWS CloudWatch']),
+    requirements: JSON.stringify([
+      'P95/P99 latency calculations and anomaly detection thresholds',
+      'Prometheus custom metrics exporter instrumentation',
+      'Multi-channel webhook dispatching (Slack, Discord, PagerDuty)',
+      'Automated health probe checking HTTP 200/500 service responses'
+    ]),
+    milestones: JSON.stringify([
+      'Milestone 1: Metric scraper and system probe daemon',
+      'Milestone 2: Grafana dashboard definitions as code',
+      'Milestone 3: Alert rule engine with threshold dampening',
+      'Milestone 4: Simulated load generator and chaos tests'
+    ]),
+    expectedOutcome: 'A complete SRE observability stack ready to demonstrate in DevOps and Infrastructure interviews.',
+    relatedSkillName: 'DevOps, CI/CD & Observability',
+    domain: 'DevOps & Cloud Engineering',
+    targetRoles: ['Cloud / DevOps Engineer', 'Site Reliability Engineer', 'Software Engineer']
   }
 ];

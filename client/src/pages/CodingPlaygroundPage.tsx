@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Play,
   CheckCircle2,
@@ -108,6 +108,8 @@ const ALL_CATEGORIES = [
 const CodingPlaygroundPage: React.FC = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const categoryParam = searchParams.get('category');
 
   // Mode: 'library' or 'editor'
   const isEditorMode = Boolean(slug);
@@ -125,11 +127,19 @@ const CodingPlaygroundPage: React.FC = () => {
   const [problemsList, setProblemsList] = useState<ProblemListItem[]>([]);
   const [categories, setCategories] = useState<string[]>(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState(categoryParam || 'All');
   const [selectedDifficulty, setSelectedDifficulty] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [activeViewTab, setActiveViewTab] = useState<'problems' | 'topics' | 'submissions'>('problems');
   const [loading, setLoading] = useState(true);
+
+  // React to changes in URL category param
+  useEffect(() => {
+    if (categoryParam) {
+      setSelectedCategory(categoryParam);
+      setActiveViewTab('problems');
+    }
+  }, [categoryParam]);
 
   // Load Dashboard Stats & Categories
   useEffect(() => {

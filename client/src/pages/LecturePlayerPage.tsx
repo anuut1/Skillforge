@@ -81,15 +81,72 @@ const LecturePlayerPage: React.FC = () => {
 
   const isCompleted = completedTopics[activeLectureId] || false;
 
+  const [isMobileSyllabusOpen, setIsMobileSyllabusOpen] = useState(false);
+
   return (
     <div className="flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] bg-slate-950">
-      {/* LEFT: Course Navigation Sidebar */}
+      {/* Mobile Syllabus Drawer Backdrop & Modal */}
+      {isMobileSyllabusOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-80 max-w-[85vw] h-full bg-slate-950 border-r border-slate-800 flex flex-col shadow-2xl">
+            <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+              <span className="text-xs font-bold text-slate-300">Course Syllabus</span>
+              <button
+                onClick={() => setIsMobileSyllabusOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 text-xs"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <Sidebar
+                courseId={courseId || 'course-dsa-masterclass'}
+                courseTitle={matchedCourse?.title}
+                lectures={effectiveLectures}
+                onSelectLecture={() => setIsMobileSyllabusOpen(false)}
+              />
+            </div>
+          </div>
+          <div className="flex-1" onClick={() => setIsMobileSyllabusOpen(false)} />
+        </div>
+      )}
+
+      {/* DESKTOP: Course Navigation Sidebar */}
       <div className="hidden md:block">
-        <Sidebar courseId={courseId || 'course-dsa-masterclass'} lectures={effectiveLectures} />
+        <Sidebar
+          courseId={courseId || 'course-dsa-masterclass'}
+          courseTitle={matchedCourse?.title}
+          lectures={effectiveLectures}
+        />
       </div>
       
       {/* CENTER: Video Player, Controls & Tabbed Details */}
       <main className="flex-1 overflow-y-auto border-r border-slate-800">
+        {/* Navigation Top Bar: Breadcrumbs & Mobile Syllabus Trigger */}
+        <div className="border-b border-slate-800/80 bg-slate-900/30 px-4 sm:px-8 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-xs text-slate-400 overflow-x-auto no-scrollbar">
+            <Link to="/courses" className="hover:text-indigo-400 transition-colors shrink-0">
+              Courses
+            </Link>
+            <span>/</span>
+            <Link to={`/courses/${courseId || 'course-dsa-masterclass'}`} className="hover:text-indigo-400 transition-colors truncate max-w-[200px] sm:max-w-[320px]">
+              {matchedCourse?.title || 'Masterclass'}
+            </Link>
+            <span>/</span>
+            <span className="text-slate-200 font-medium truncate max-w-[150px] sm:max-w-[240px]">
+              Lecture {currentLecture.order}: {currentLecture.title}
+            </span>
+          </div>
+
+          <button
+            onClick={() => setIsMobileSyllabusOpen(true)}
+            className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 text-xs font-semibold hover:bg-indigo-600/20 transition-all shrink-0"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            <span>Syllabus ({currentIndex + 1}/{effectiveLectures.length})</span>
+          </button>
+        </div>
+
         <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
           
           {/* Video Player */}
@@ -137,10 +194,10 @@ const LecturePlayerPage: React.FC = () => {
               </p>
             </div>
             
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
               <button 
                 onClick={toggleTopicCompletion}
-                className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
+                className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
                   isCompleted 
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
                     : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
@@ -151,23 +208,48 @@ const LecturePlayerPage: React.FC = () => {
                 <span>{isCompleted ? 'Completed' : 'Mark as Done'}</span>
               </button>
 
-              <button 
-                onClick={goPrev}
-                disabled={!hasPrev}
-                className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                title="Previous Lecture"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button 
-                onClick={goNext}
-                disabled={!hasNext}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-semibold text-sm shadow-lg shadow-indigo-500/20"
-              >
-                Next <ChevronRight className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={goPrev}
+                  disabled={!hasPrev}
+                  className="flex-1 sm:flex-none flex items-center justify-center p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title={hasPrev ? `Previous: ${effectiveLectures[currentIndex - 1].title}` : 'Previous Lecture'}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                  <span className="sm:hidden text-xs font-medium ml-1">Prev</span>
+                </button>
+                <button 
+                  onClick={goNext}
+                  disabled={!hasNext}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-semibold text-sm shadow-lg shadow-indigo-500/20"
+                  title={hasNext ? `Next: ${effectiveLectures[currentIndex + 1].title}` : 'Next Lecture'}
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Up Next Preview Banner */}
+          {hasNext && (
+            <div 
+              onClick={goNext}
+              className="mt-4 p-3 bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-500/20 rounded-xl flex items-center justify-between cursor-pointer transition-colors group"
+            >
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20 shrink-0">
+                  Up Next
+                </span>
+                <span className="text-xs text-slate-300 group-hover:text-white font-medium truncate">
+                  Lecture {currentIndex + 2}: {effectiveLectures[currentIndex + 1].title}
+                </span>
+              </div>
+              <span className="text-xs text-indigo-400 font-semibold flex items-center gap-1 shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">
+                Play Next →
+              </span>
+            </div>
+          )}
           
           {/* TAB BAR: AI Summary, Study Resources, Coding Practice, Adaptive Quiz */}
           <div className="mt-8">

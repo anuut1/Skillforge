@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
   BookOpen,
   ExternalLink,
   Check,
+  RotateCcw,
   Award
 } from 'lucide-react';
 import Sidebar from '../components/Layout/Sidebar';
@@ -19,6 +20,14 @@ import AiTutorPanel from '../components/AiTutorPanel';
 import type { Lecture } from '../types';
 import { COURSES_CATALOG } from '../data/courseCatalog';
 import { getTopicDetail } from '../data/topicContentCatalog';
+
+// Declare YT window interface for YouTube IFrame API
+declare global {
+  interface Window {
+    YT?: any;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
 
 const MOCK_LECTURES: Lecture[] = [
   { id: 'dsa-l1', courseId: 'course-dsa-masterclass', title: 'Asymptotic Analysis: Big-O, Big-Omega & Space Invariants', description: 'Overview of time complexity and space invariants.', videoUrl: '', duration: 40, order: 1, isCompleted: true },
@@ -32,6 +41,10 @@ const LecturePlayerPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'summary' | 'resources' | 'practice' | 'quiz'>('summary');
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [completedTopics, setCompletedTopics] = useState<Record<string, boolean>>({});
+
+  // End-of-video countdown & next topic transition state
+  const [isVideoEnded, setIsVideoEnded] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const matchedCourse = COURSES_CATALOG.find(c => c.id === courseId);
   const effectiveLectures: Lecture[] = matchedCourse && matchedCourse.lectures && matchedCourse.lectures.length > 0
@@ -61,14 +74,19 @@ const LecturePlayerPage: React.FC = () => {
 
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < effectiveLectures.length - 1;
+  const nextLecture = hasNext ? effectiveLectures[currentIndex + 1] : null;
 
   const goPrev = () => {
     setIsVideoPlaying(false);
+    setIsVideoEnded(false);
+    setCountdown(null);
     if (hasPrev) navigate(`/courses/${courseId}/lectures/${effectiveLectures[currentIndex - 1].id}`);
   };
 
   const goNext = () => {
     setIsVideoPlaying(false);
+    setIsVideoEnded(false);
+    setCountdown(null);
     if (hasNext) navigate(`/courses/${courseId}/lectures/${effectiveLectures[currentIndex + 1].id}`);
   };
 
@@ -80,8 +98,132 @@ const LecturePlayerPage: React.FC = () => {
   };
 
   const isCompleted = completedTopics[activeLectureId] || false;
-
   const [isMobileSyllabusOpen, setIsMobileSyllabusOpen] = useState(false);
+
+  // YouTube IFrame Player API integration
+  const ytPlayerRef = useRef<any>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const countdownTimerRef = useRef<any>(null);
+
+  // Clean state when lectureId changes
+  useEffect(() => {
+    setIsVideoEnded(false);
+    setCountdown(null);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }, [lectureId]);
+
+  // Load YouTube IFrame API script once if not already present
+  useEffect(() => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+  }, []);
+
+  // Initialize or update YouTube player when isVideoPlaying or topicDetail.youtubeEmbedId changes
+  useEffect(() => {
+    if (!isVideoPlaying) return;
+
+    let isMounted = true;
+
+    const setupPlayer = () => {
+      if (!isMounted) return;
+      // Clean up existing player if any
+      if (ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch {
+          // ignore cleanup errors
+        }
+        ytPlayerRef.current = null;
+      }
+
+      if (window.YT && window.YT.Player) {
+        ytPlayerRef.current = new window.YT.Player('yt-embedded-player', {
+          videoId: topicDetail.youtubeEmbedId,
+          playerVars: {
+            autoplay: 1,
+            rel: 0,
+            modestbranding: 1,
+            enablejsapi: 1,
+            origin: window.location.origin
+          },
+          events: {
+            onStateChange: (event: any) => {
+              // YT.PlayerState.ENDED is 0
+              if (event.data === 0) {
+                // Video ended!
+                setIsVideoEnded(true);
+                // Mark current topic as completed automatically
+                setCompletedTopics(prev => ({ ...prev, [activeLectureId]: true }));
+
+                if (hasNext) {
+                  setCountdown(5);
+                }
+              }
+            }
+          }
+        });
+      }
+    };
+
+    if (window.YT && window.YT.Player) {
+      setupPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = () => {
+        setupPlayer();
+      };
+    }
+
+    return () => {
+      isMounted = false;
+      if (ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch {
+          // ignore
+        }
+        ytPlayerRef.current = null;
+      }
+    };
+  }, [isVideoPlaying, topicDetail.youtubeEmbedId, activeLectureId, hasNext]);
+
+  // Countdown effect when video ends
+  useEffect(() => {
+    if (countdown === null) return;
+
+    if (countdown <= 0) {
+      goNext();
+      return;
+    }
+
+    countdownTimerRef.current = setTimeout(() => {
+      setCountdown(prev => (prev !== null ? prev - 1 : null));
+    }, 1000);
+
+    return () => {
+      if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
+    };
+  }, [countdown]);
+
+  const cancelCountdown = () => {
+    if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
+    setCountdown(null);
+  };
+
+  const replayVideo = () => {
+    setIsVideoEnded(false);
+    setCountdown(null);
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+      ytPlayerRef.current.seekTo(0);
+      ytPlayerRef.current.playVideo();
+    }
+  };
 
   return (
     <div className="flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] bg-slate-950">
@@ -133,7 +275,7 @@ const LecturePlayerPage: React.FC = () => {
               {matchedCourse?.title || 'Masterclass'}
             </Link>
             <span>/</span>
-            <span className="text-slate-200 font-medium truncate max-w-[150px] sm:max-w-[240px]">
+            <span className="text-slate-200 font-medium truncate max-w-[180px] sm:max-w-[280px]">
               Lecture {currentLecture.order}: {currentLecture.title}
             </span>
           </div>
@@ -147,57 +289,156 @@ const LecturePlayerPage: React.FC = () => {
           </button>
         </div>
 
-        <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
           
-          {/* Video Player */}
-          <div className="w-full aspect-video bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-6 relative flex items-center justify-center group shadow-2xl">
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-slate-950/40 z-10 pointer-events-none"></div>
+          {/* PRIMARY SECTION: Dominant 16:9 Video Player with Compact Side AI Tutor Card */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             
-            {isVideoPlaying ? (
-              <iframe
-                src={`https://www.youtube.com/embed/${topicDetail.youtubeEmbedId}?autoplay=1&rel=0`}
-                title={topicDetail.title}
-                className="w-full h-full border-0 relative z-20"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
+            {/* DOMINANT 16:9 VIDEO CONTAINER (xl:col-span-8 or col-span-9) */}
+            <div className="xl:col-span-8 2xl:col-span-9 w-full">
               <div 
-                onClick={() => setIsVideoPlaying(true)}
-                className="flex flex-col items-center gap-3 cursor-pointer z-20 group"
+                ref={playerContainerRef}
+                className="w-full aspect-video bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden relative shadow-2xl flex items-center justify-center group ring-1 ring-white/5"
               >
-                <div className="w-20 h-20 rounded-full bg-indigo-600/90 group-hover:bg-indigo-500 flex items-center justify-center shadow-xl shadow-indigo-500/30 transition-transform group-hover:scale-110">
-                  <Play className="h-8 w-8 text-white ml-1 fill-white" />
-                </div>
-                <span className="text-sm font-semibold text-slate-200">Play Lecture Stream: {topicDetail.title}</span>
-                <span className="text-xs text-slate-400">{topicDetail.duration} mins • Full HD Tutorial</span>
+                {/* Dynamic Overlay when video has completed */}
+                {isVideoEnded && (
+                  <div className="absolute inset-0 z-30 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/10">
+                      <CheckCircle2 className="h-7 w-7" />
+                    </div>
+                    
+                    <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">
+                      Lecture Completed! 🎉
+                    </h2>
+                    
+                    {hasNext && nextLecture ? (
+                      <div className="max-w-md space-y-4">
+                        <p className="text-xs sm:text-sm text-slate-300">
+                          Up Next: <span className="font-semibold text-indigo-300">{nextLecture.title}</span>
+                        </p>
+                        
+                        {countdown !== null && (
+                          <div className="text-xs font-mono text-indigo-400 bg-indigo-950/60 px-3 py-1 rounded-full border border-indigo-500/30 w-fit mx-auto">
+                            Auto-advancing in {countdown}s...
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                          <button
+                            onClick={goNext}
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-indigo-500/30 transition-all transform hover:scale-[1.02]"
+                          >
+                            <Play className="h-4 w-4 fill-white" />
+                            <span>Play Next Lecture</span>
+                          </button>
+                          
+                          {countdown !== null && (
+                            <button
+                              onClick={cancelCountdown}
+                              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs sm:text-sm border border-slate-700 transition-colors"
+                            >
+                              Stay Here
+                            </button>
+                          )}
+
+                          <button
+                            onClick={replayVideo}
+                            className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 transition-colors"
+                            title="Replay video"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="max-w-md space-y-4">
+                        <p className="text-xs sm:text-sm text-slate-300">
+                          Congratulations! You have completed all lectures in this course.
+                        </p>
+                        <div className="flex items-center justify-center gap-3 pt-2">
+                          <button
+                            onClick={replayVideo}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" /> Replay Lecture
+                          </button>
+                          <Link
+                            to="/courses"
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+                          >
+                            Browse More Courses
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Player Container */}
+                {isVideoPlaying ? (
+                  <div id="yt-embedded-player" className="w-full h-full border-0 relative z-20" />
+                ) : (
+                  <div 
+                    onClick={() => setIsVideoPlaying(true)}
+                    className="flex flex-col items-center gap-4 cursor-pointer z-20 group text-center px-4"
+                  >
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-indigo-600/90 group-hover:bg-indigo-500 flex items-center justify-center shadow-2xl shadow-indigo-500/40 transition-transform group-hover:scale-110">
+                      <Play className="h-9 w-9 sm:h-10 sm:w-10 text-white ml-1 fill-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-sm sm:text-base font-bold text-slate-100 block">
+                        Play Lecture Stream: {topicDetail.title}
+                      </span>
+                      <span className="text-xs text-slate-400 block font-medium">
+                        {topicDetail.duration} mins • 1080p Full HD • Verified Syllabus Video
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* COMPACT AI CAREER / TUTOR CARD (xl:col-span-4 or col-span-3) */}
+            <div className="xl:col-span-4 2xl:col-span-3 w-full">
+              <div className="h-[280px] xl:h-[460px] flex flex-col">
+                <AiTutorPanel
+                  courseTitle={matchedCourse?.title || "Full-Stack Web Engineering"}
+                  lectureTitle={topicDetail.title}
+                  compact={true}
+                />
+              </div>
+            </div>
+
           </div>
 
-          {/* Lecture Info & Navigation Header */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 pb-6 border-b border-slate-800">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
+          {/* Lecture Info & Navigation Controls Bar */}
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 pb-6 border-b border-slate-800 pt-2">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-semibold border border-indigo-500/20">
                   Lecture {currentLecture.order} of {effectiveLectures.length}
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full bg-purple-500/10 text-purple-300 text-xs font-semibold border border-purple-500/20">
                   {topicDetail.category}
                 </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 text-xs font-medium border border-slate-700">
+                  {topicDetail.duration} Mins
+                </span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+              
+              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
                 {topicDetail.title}
               </h1>
-              <p className="text-slate-400 text-sm leading-relaxed">
+              
+              <p className="text-slate-400 text-sm leading-relaxed max-w-4xl">
                 {topicDetail.description}
               </p>
             </div>
             
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
               <button 
                 onClick={toggleTopicCompletion}
-                className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
+                className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all shadow-sm ${
                   isCompleted 
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
                     : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
@@ -224,28 +465,28 @@ const LecturePlayerPage: React.FC = () => {
                   className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-semibold text-sm shadow-lg shadow-indigo-500/20"
                   title={hasNext ? `Next: ${effectiveLectures[currentIndex + 1].title}` : 'Next Lecture'}
                 >
-                  <span>Next</span>
+                  <span>Next Topic</span>
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Up Next Preview Banner */}
-          {hasNext && (
+          {/* Up Next Banner if next lecture exists */}
+          {hasNext && nextLecture && (
             <div 
               onClick={goNext}
-              className="mt-4 p-3 bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-500/20 rounded-xl flex items-center justify-between cursor-pointer transition-colors group"
+              className="p-3 sm:p-4 bg-gradient-to-r from-indigo-950/40 via-indigo-900/20 to-slate-900/40 hover:from-indigo-950/60 hover:to-slate-900/60 border border-indigo-500/20 rounded-xl flex items-center justify-between cursor-pointer transition-all group"
             >
-              <div className="flex items-center gap-2.5 overflow-hidden">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20 shrink-0">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-md border border-indigo-500/20 shrink-0">
                   Up Next
                 </span>
-                <span className="text-xs text-slate-300 group-hover:text-white font-medium truncate">
-                  Lecture {currentIndex + 2}: {effectiveLectures[currentIndex + 1].title}
+                <span className="text-xs sm:text-sm text-slate-300 group-hover:text-white font-medium truncate">
+                  Lecture {currentIndex + 2}: {nextLecture.title}
                 </span>
               </div>
-              <span className="text-xs text-indigo-400 font-semibold flex items-center gap-1 shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">
+              <span className="text-xs text-indigo-400 font-semibold flex items-center gap-1 shrink-0 ml-2 group-hover:translate-x-1 transition-transform">
                 Play Next →
               </span>
             </div>
@@ -471,14 +712,6 @@ const LecturePlayerPage: React.FC = () => {
           </div>
         </div>
       </main>
-
-      {/* RIGHT: AI Tutor Assistant */}
-      <aside className="w-full lg:w-96 p-4 bg-slate-950 flex flex-col h-[600px] lg:h-auto">
-        <AiTutorPanel
-          courseTitle={matchedCourse?.title || "Full-Stack Web Engineering"}
-          lectureTitle={topicDetail.title}
-        />
-      </aside>
     </div>
   );
 };

@@ -84,14 +84,21 @@ import {
   getResumeCapabilities
 } from '../controllers/resumeAwsController';
 
-// Direct PDF Upload Multer Config (Memory storage, 10MB limit, strictly application/pdf)
-const directPdfUpload = multer({
+// Direct PDF & DOCX Upload Multer Config (Memory storage, 10MB limit, strictly PDF and DOCX)
+const directDocumentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const isPdf = file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      const err = new Error('Invalid file format. Only PDF documents (.pdf) are supported for direct upload.');
+    const lowerName = file.originalname.toLowerCase();
+    const mime = file.mimetype;
+    const isPdf = mime === 'application/pdf' || lowerName.endsWith('.pdf');
+    const isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                   mime === 'application/msword' ||
+                   lowerName.endsWith('.docx') ||
+                   lowerName.endsWith('.doc');
+
+    if (!isPdf && !isDocx) {
+      const err = new Error('Invalid file format. Only PDF documents (.pdf) and Word documents (.docx) are supported for direct upload.');
       (err as any).status = 400;
       return cb(err);
     }
@@ -100,7 +107,7 @@ const directPdfUpload = multer({
 }).single('file');
 
 const wrappedDirectUploadMiddleware = (req: any, res: any, next: any) => {
-  directPdfUpload(req, res, (err: any) => {
+  directDocumentUpload(req, res, (err: any) => {
     if (err) {
       const status = err.status || (err.code === 'LIMIT_FILE_SIZE' ? 400 : 400);
       const message = err.code === 'LIMIT_FILE_SIZE'

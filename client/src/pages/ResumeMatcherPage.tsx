@@ -223,7 +223,8 @@ const ResumeMatcherPage: React.FC = () => {
 
     setIsUploading(true);
 
-    if (isPdf) {
+    if (isPdf || isDocx) {
+      const fileKind = isPdf ? 'PDF' : 'Word (.docx)';
       setUploadProgress(`Uploading and analyzing ${file.name}...`);
       try {
         const formData = new FormData();
@@ -237,9 +238,17 @@ const ResumeMatcherPage: React.FC = () => {
           headers: { 'Content-Type': undefined }
         });
 
-        if (directRes.data?.extractedText) {
-          setResumeText(directRes.data.extractedText);
+        const extractedText = directRes.data?.extractedText;
+        console.log('[ResumeUpload] Setting extracted resume text into UI state:', extractedText);
+
+        if (!extractedText || extractedText.trim().length < 20) {
+          throw new Error(`Upload processed, but received insufficient readable text from ${fileKind} document.`);
         }
+
+        // 1. Immediately replace the resume text state with the genuine extracted text
+        setResumeText(extractedText);
+
+        // 2. Set the normalized analysis result
         if (directRes.data?.atsScore !== undefined) {
           const normalized = normalizeAnalysis(directRes.data);
           setAnalysisResult(normalized);
@@ -251,53 +260,21 @@ const ResumeMatcherPage: React.FC = () => {
           setActiveTab('overview');
         }
 
+        // 3. Clear file input value to ensure re-uploads trigger onChange
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+
+        // 4. Show success message only once genuine text has replaced state
         setStatusMessage(`Resume "${file.name}" uploaded and analyzed successfully!`);
         setTimeout(() => setStatusMessage(null), 5000);
         return;
       } catch (directErr: any) {
-        const serverError = directErr?.response?.data?.message || directErr?.response?.data?.error || directErr?.message || 'Failed to extract text from PDF document.';
+        const serverError = directErr?.response?.data?.message || directErr?.response?.data?.error || directErr?.message || `Failed to extract text from ${fileKind} document.`;
         setUploadError(serverError);
-        return;
-      } finally {
-        setIsUploading(false);
-        setUploadProgress(null);
-      }
-    }
-
-    if (isDocx) {
-      setUploadProgress(`Uploading and analyzing ${file.name}...`);
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('targetRole', targetRole);
-        if (jobDescription) {
-          formData.append('jobDescription', jobDescription);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
         }
-
-        const directRes = await client.post('/resume/upload', formData, {
-          headers: { 'Content-Type': undefined }
-        });
-
-        if (directRes.data?.extractedText) {
-          setResumeText(directRes.data.extractedText);
-        }
-        if (directRes.data?.atsScore !== undefined) {
-          const normalized = normalizeAnalysis(directRes.data);
-          setAnalysisResult(normalized);
-          if (directRes.data.fixerSuggestions) {
-            setFixerItems(directRes.data.fixerSuggestions);
-          }
-          fetchHistory();
-          fetchUploadedResumes();
-          setActiveTab('overview');
-        }
-
-        setStatusMessage(`Resume "${file.name}" uploaded and analyzed successfully!`);
-        setTimeout(() => setStatusMessage(null), 5000);
-        return;
-      } catch (directErr: any) {
-        const serverError = directErr?.response?.data?.message || directErr?.message || 'Failed to extract text from Word document.';
-        setUploadError(serverError);
         return;
       } finally {
         setIsUploading(false);

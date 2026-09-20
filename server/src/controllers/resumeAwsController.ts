@@ -8,6 +8,7 @@ import { isBedrockConfigured } from '../lib/bedrock';
 import { queueResumeAnalysisJob, publishDomainEvent } from '../lib/messaging';
 import { analyzeResumeWithBedrockOrFallback } from '../services/bedrockAiService';
 import { extractTextFromPdfBuffer } from '../lib/pdfExtractor';
+import { extractTextFromDocxBuffer } from '../lib/docxExtractor';
 import prisma from '../lib/prisma';
 import crypto from 'crypto';
 
@@ -506,26 +507,39 @@ export async function uploadAndAnalyzeResumeDirect(req: Request, res: Response) 
 
     const { targetRole = 'Software Engineer', jobDescription = '' } = req.body;
     const fileName = file.originalname || 'Uploaded_Resume.pdf';
+    const lowerName = fileName.toLowerCase();
+    const mime = file.mimetype || '';
 
-    // Validate PDF mime type or extension
-    const isPdf = file.mimetype === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      return res.status(400).json({ message: 'Invalid file format. Only PDF documents (.pdf) are supported for direct upload.' });
+    // Validate PDF or DOCX mime type / extension
+    const isPdf = mime === 'application/pdf' || lowerName.endsWith('.pdf');
+    const isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                   mime === 'application/msword' ||
+                   lowerName.endsWith('.docx') ||
+                   lowerName.endsWith('.doc');
+
+    if (!isPdf && !isDocx) {
+      return res.status(400).json({
+        message: 'Invalid file format. Only PDF documents (.pdf) and Word documents (.docx) are supported for direct upload.'
+      });
     }
 
     let extractedText = '';
     try {
-      extractedText = await extractTextFromPdfBuffer(file.buffer);
+      if (isPdf) {
+        extractedText = await extractTextFromPdfBuffer(file.buffer);
+      } else {
+        extractedText = await extractTextFromDocxBuffer(file.buffer);
+      }
     } catch (parseErr: any) {
       return res.status(422).json({
-        message: parseErr.message || 'Could not extract readable text from PDF document.',
+        message: parseErr.message || `Could not extract readable text from ${isPdf ? 'PDF' : 'Word (.docx)'} document.`,
         error: parseErr.message
       });
     }
 
     if (!extractedText || extractedText.trim().length < 20) {
       return res.status(422).json({
-        message: 'PDF document contained no searchable plain text (scanned or image-only).'
+        message: `${isPdf ? 'PDF' : 'Word (.docx)'} document contained no searchable plain text (scanned or image-only).`
       });
     }
 
@@ -565,7 +579,7 @@ export async function uploadAndAnalyzeResumeDirect(req: Request, res: Response) 
         userId,
         filename: fileName,
         s3Key: `direct-uploads/${userId}/${fileName}`,
-        fileType: 'application/pdf',
+        fileType: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         fileSize: file.size || 0,
         uploadStatus: 'COMPLETED',
         analysisStatus: 'COMPLETED',

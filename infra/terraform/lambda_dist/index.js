@@ -2,6 +2,51 @@
 global.__skillforge_submissions = global.__skillforge_submissions || [];
 
 const vm = require('vm');
+const zlib = require('zlib');
+
+function extractDocxFromBuffer(buf) {
+    if (!buf || buf.length < 30) return '';
+    const zipStart = buf.indexOf(Buffer.from([0x50, 0x4B, 0x03, 0x04]));
+    if (zipStart === -1) return '';
+    const slice = buf.slice(zipStart);
+
+    let pos = 0;
+    let allText = [];
+    while (pos < slice.length - 30) {
+        if (slice[pos] === 0x50 && slice[pos+1] === 0x4b && slice[pos+2] === 0x03 && slice[pos+3] === 0x04) {
+            const method = slice.readUInt16LE(pos + 8);
+            const compSize = slice.readUInt32LE(pos + 18);
+            const fnLen = slice.readUInt16LE(pos + 26);
+            const extraLen = slice.readUInt16LE(pos + 28);
+            const filename = slice.slice(pos + 30, pos + 30 + fnLen).toString('utf8');
+            const dataStart = pos + 30 + fnLen + extraLen;
+            const dataEnd = dataStart + compSize;
+
+            if (filename === 'word/document.xml' || filename.endsWith('/document.xml') || filename === 'document.xml') {
+                const compressedData = slice.slice(dataStart, dataEnd);
+                let xmlStr = '';
+                try {
+                    if (method === 8) {
+                        xmlStr = zlib.inflateRawSync(compressedData).toString('utf8');
+                    } else if (method === 0) {
+                        xmlStr = compressedData.toString('utf8');
+                    }
+                    const matches = xmlStr.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g);
+                    if (matches) {
+                        matches.forEach(m => {
+                            const clean = m.replace(/<[^>]+>/g, '');
+                            if (clean) allText.push(clean);
+                        });
+                    }
+                } catch (e) {}
+            }
+            pos = dataEnd;
+        } else {
+            pos++;
+        }
+    }
+    return allText.join(' ').replace(/\s+/g, ' ').trim();
+}
 
 function executeJsCode(code, tests) {
     if (!code || code.trim().length < 5) {
@@ -665,53 +710,63 @@ exports.handler = async (event) => {
         };
     }
 
-    // Direct Resume Upload: POST /resume/upload-direct
-    if (path.includes("/resume/upload-direct") && method === "POST") {
+    // Direct Resume Upload: POST /resume/upload-direct or /resume/upload
+    if ((path.includes("/resume/upload-direct") || (path.includes("/resume/upload") && !path.includes("/resume/upload-url"))) && method === "POST") {
         let isPdf = false;
+        let isDocx = false;
         let extractedText = '';
 
         if (rawBuffer && rawBuffer.length > 0) {
             const bufferStr = rawBuffer.toString('binary');
             const hasPdfMagic = bufferStr.includes('%PDF-');
             const hasPdfExt = /filename="[^"]+\.pdf"/i.test(bufferStr);
+            const hasDocxMagic = rawBuffer.indexOf(Buffer.from([0x50, 0x4B, 0x03, 0x04])) !== -1;
+            const hasDocxExt = /filename="[^"]+\.docx"/i.test(bufferStr) || /filename="[^"]+\.doc"/i.test(bufferStr);
 
-            if (!hasPdfMagic && !hasPdfExt && !bufferStr.startsWith('%PDF-')) {
+            isPdf = hasPdfMagic || hasPdfExt || bufferStr.startsWith('%PDF-');
+            isDocx = (!isPdf && hasDocxMagic) || hasDocxExt;
+
+            if (!isPdf && !isDocx) {
                 return {
                     statusCode: 400,
                     headers: defaultHeaders,
                     body: JSON.stringify({
-                        message: "Invalid file format. Only PDF documents (.pdf) are supported for direct upload."
+                        message: "Invalid file format. Only PDF documents (.pdf) and Word documents (.docx) are supported for direct upload."
                     })
                 };
             }
 
-            // Isolate file part from multipart form data
-            let fileContentStr = bufferStr;
-            const headerEndIndex = bufferStr.indexOf('\r\n\r\n');
-            if (headerEndIndex !== -1 && (bufferStr.includes('Content-Disposition') || bufferStr.includes('--'))) {
-                const footerIndex = bufferStr.lastIndexOf('\r\n--');
-                fileContentStr = footerIndex > headerEndIndex 
-                    ? bufferStr.substring(headerEndIndex + 4, footerIndex) 
-                    : bufferStr.substring(headerEndIndex + 4);
-            }
-
-            let textChunks = [];
-            const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
-            let match;
-            while ((match = streamRegex.exec(fileContentStr)) !== null) {
-                const streamContent = match[1];
-                const textMatches = streamContent.match(/\(([^()]+)\)/g);
-                if (textMatches) {
-                    textMatches.forEach(t => {
-                        const cleaned = t.replace(/^\(|\)$/g, '').trim();
-                        if (cleaned.length > 1 && !cleaned.startsWith('\\')) {
-                            textChunks.push(cleaned);
-                        }
-                    });
+            if (isPdf) {
+                // Isolate file part from multipart form data
+                let fileContentStr = bufferStr;
+                const headerEndIndex = bufferStr.indexOf('\r\n\r\n');
+                if (headerEndIndex !== -1 && (bufferStr.includes('Content-Disposition') || bufferStr.includes('--'))) {
+                    const footerIndex = bufferStr.lastIndexOf('\r\n--');
+                    fileContentStr = footerIndex > headerEndIndex 
+                        ? bufferStr.substring(headerEndIndex + 4, footerIndex) 
+                        : bufferStr.substring(headerEndIndex + 4);
                 }
-            }
 
-            extractedText = textChunks.join(' ').replace(/\s+/g, ' ').trim();
+                let textChunks = [];
+                const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+                let match;
+                while ((match = streamRegex.exec(fileContentStr)) !== null) {
+                    const streamContent = match[1];
+                    const textMatches = streamContent.match(/\(([^()]+)\)/g);
+                    if (textMatches) {
+                        textMatches.forEach(t => {
+                            const cleaned = t.replace(/^\(|\)$/g, '').trim();
+                            if (cleaned.length > 1 && !cleaned.startsWith('\\')) {
+                                textChunks.push(cleaned);
+                            }
+                        });
+                    }
+                }
+
+                extractedText = textChunks.join(' ').replace(/\s+/g, ' ').trim();
+            } else if (isDocx) {
+                extractedText = extractDocxFromBuffer(rawBuffer);
+            }
         }
 
         if (!extractedText || extractedText.length < 20) {
@@ -719,7 +774,7 @@ exports.handler = async (event) => {
                 statusCode: 422,
                 headers: defaultHeaders,
                 body: JSON.stringify({
-                    message: "PDF document contains no extractable text layer (it may be a scanned image or empty). Please upload a text-based PDF or copy-paste your resume content."
+                    message: `${isPdf ? 'PDF' : 'Word (.docx)'} document contains no extractable text layer (it may be a scanned image or empty). Please upload a text-based document or copy-paste your resume content.`
                 })
             };
         }

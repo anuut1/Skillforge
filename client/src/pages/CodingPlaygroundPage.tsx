@@ -20,7 +20,8 @@ import {
   Lightbulb,
   Eye,
   AlertTriangle,
-  Calendar
+  Calendar,
+  History
 } from 'lucide-react';
 import client from '../api/client';
 import type { CodingProblem } from '../types';
@@ -103,7 +104,9 @@ const CodingPlaygroundPage: React.FC = () => {
   const [userCodeByLang, setUserCodeByLang] = useState<Record<string, string>>({});
   const [leftTab, setLeftTab] = useState<'description' | 'solution'>('description');
   const [solutionLang, setSolutionLang] = useState<'javascript' | 'python' | 'java' | 'cpp'>('javascript');
-  const [outputTab, setOutputTab] = useState<'results' | 'review'>('results');
+  const [outputTab, setOutputTab] = useState<'results' | 'review' | 'history'>('results');
+  const [problemSubmissions, setProblemSubmissions] = useState<any[]>([]);
+  const [problemProgress, setProblemProgress] = useState<any | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [submissionResult, setSubmissionResult] = useState<any>(null);
 
@@ -319,6 +322,21 @@ const CodingPlaygroundPage: React.FC = () => {
       setLoadError(null);
       setProblem(null);
       setSubmissionResult(null);
+      setProblemSubmissions([]);
+      setProblemProgress(null);
+
+      // Load specific submission history & permanent progress for this question
+      client.get(`/coding/problems/${slug}/submissions`)
+        .then(res => {
+          if (res.data) {
+            setProblemSubmissions(res.data.submissions || []);
+            setProblemProgress(res.data.progress || null);
+            if (res.data.status === 'Solved' || res.data.progress?.status === 'Solved') {
+              setUserSolvedSlugs(prev => Array.from(new Set([...prev, slug])));
+            }
+          }
+        })
+        .catch(() => {});
 
       client.get(`/coding/problems/${slug}`)
         .then(res => {
@@ -717,16 +735,31 @@ const CodingPlaygroundPage: React.FC = () => {
 
       // Update real solved state if Accepted
       const finalStatus = normalizedResult.execution.status;
+      const problemKey = problem.slug || problem.id;
       if (finalStatus === 'Accepted') {
-        const problemKey = problem.slug || problem.id;
         setUserSolvedSlugs(prev => Array.from(new Set([...prev, problemKey])));
         setUserAttemptedSlugs(prev => prev.filter(k => k !== problemKey));
       } else {
-        const problemKey = problem.slug || problem.id;
-        setUserAttemptedSlugs(prev => Array.from(new Set([...prev, problemKey])));
+        // PERMANENCE RULE: If this problem is already Solved, subsequent failing attempts NEVER unset Solved!
+        setUserAttemptedSlugs(prev => {
+          if (userSolvedSlugs.includes(problemKey)) return prev;
+          return Array.from(new Set([...prev, problemKey]));
+        });
       }
 
-      // Refresh stats in background
+      // Refresh problem submission history and stats in background
+      const targetSlug = problem.slug || slug;
+      if (targetSlug) {
+        client.get(`/coding/problems/${targetSlug}/submissions`)
+          .then(res => {
+            if (res.data) {
+              setProblemSubmissions(res.data.submissions || []);
+              setProblemProgress(res.data.progress || null);
+            }
+          })
+          .catch(() => {});
+      }
+
       client.get('/coding/stats')
         .then(s => setStats(s.data))
         .catch(() => {});
@@ -885,6 +918,21 @@ const CodingPlaygroundPage: React.FC = () => {
               <span>Solve on LeetCode</span>
               <ExternalLink className="h-3 w-3" />
             </a>
+
+            {/* Permanent Question Status Badge */}
+            {userSolvedSlugs.includes(problem.slug) || problemProgress?.status === 'Solved' ? (
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> Solved
+              </span>
+            ) : userAttemptedSlugs.includes(problem.slug) || problemProgress?.status === 'Attempted' || problemSubmissions.length > 0 ? (
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                <Clock className="h-3 w-3" /> Attempted
+              </span>
+            ) : (
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-semibold uppercase bg-slate-800 text-slate-400 border border-slate-700">
+                Not Attempted
+              </span>
+            )}
 
             <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
               problem.difficulty === 'Easy'
@@ -1101,6 +1149,14 @@ const CodingPlaygroundPage: React.FC = () => {
                 >
                   <Sparkles className="h-3.5 w-3.5 text-indigo-400" /> AI Code Review
                 </button>
+                <button
+                  onClick={() => setOutputTab('history')}
+                  className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors ${
+                    outputTab === 'history' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400'
+                  }`}
+                >
+                  <History className="h-3.5 w-3.5 text-indigo-400" /> Submissions ({problemSubmissions.length})
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 text-xs">
@@ -1251,6 +1307,139 @@ const CodingPlaygroundPage: React.FC = () => {
                     ) : (
                       <div className="text-slate-500 py-4">
                         Submit code to trigger automated AI code inspection, edge case validation, and complexity analysis.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {outputTab === 'history' && (
+                  <div className="space-y-4">
+                    {/* Problem Status & Metadata Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${
+                          userSolvedSlugs.includes(problem?.slug || '') || problemProgress?.status === 'Solved'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : (problemProgress?.status === 'Attempted' || problemSubmissions.length > 0)
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {userSolvedSlugs.includes(problem?.slug || '') || problemProgress?.status === 'Solved' ? (
+                            <CheckCircle2 className="h-5 w-5" />
+                          ) : (
+                            <Clock className="h-5 w-5" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs sm:text-sm text-white flex items-center gap-2">
+                            <span>Status:</span>
+                            {userSolvedSlugs.includes(problem?.slug || '') || problemProgress?.status === 'Solved' ? (
+                              <span className="text-emerald-400 font-extrabold flex items-center gap-1">
+                                Solved / Completed
+                              </span>
+                            ) : (problemProgress?.status === 'Attempted' || problemSubmissions.length > 0) ? (
+                              <span className="text-amber-400 font-bold">Attempted</span>
+                            ) : (
+                              <span className="text-slate-400">Not Attempted</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            {problemProgress?.firstSolvedAt ? (
+                              <span>First solved on {new Date(problemProgress.firstSolvedAt).toLocaleDateString()}</span>
+                            ) : (
+                              <span>Permanently tracked in backend</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-[11px] text-slate-300 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800">
+                        <div>
+                          <span className="text-slate-500 block">Submissions</span>
+                          <strong>{problemProgress?.totalSubmissions || problemSubmissions.length}</strong>
+                          <span className="text-slate-500"> ({problemProgress?.successfulSubmissions || problemSubmissions.filter((s: any) => s.status === 'Accepted').length} accepted)</span>
+                        </div>
+                        {problemProgress?.bestRuntimeMs != null && (
+                          <div>
+                            <span className="text-slate-500 block">Best Runtime</span>
+                            <strong className="text-emerald-400">{problemProgress.bestRuntimeMs}ms</strong>
+                          </div>
+                        )}
+                        {problemProgress?.bestMemoryMb != null && (
+                          <div>
+                            <span className="text-slate-500 block">Best Memory</span>
+                            <strong className="text-indigo-400">{problemProgress.bestMemoryMb} MB</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Submissions List */}
+                    {problemSubmissions.length === 0 ? (
+                      <div className="text-slate-500 py-6 text-center text-xs">
+                        No previous submissions recorded for this question yet. Submit a solution above to track multiple approaches and verify complexity!
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {problemSubmissions.map((sub: any, idx: number) => (
+                          <div
+                            key={sub.id || idx}
+                            className="p-3 rounded-xl bg-slate-950/40 border border-slate-800 hover:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                          >
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                sub.status === 'Accepted'
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              }`}>
+                                {sub.status}
+                              </span>
+                              <span className="text-indigo-300 font-mono text-[11px] uppercase font-semibold">
+                                {sub.language}
+                              </span>
+                              {sub.passedTests !== undefined && sub.totalTests !== undefined && (
+                                <span className="text-slate-400 text-[11px]">
+                                  {sub.passedTests}/{sub.totalTests} tests passed
+                                </span>
+                              )}
+                              {sub.runtimeMs != null && (
+                                <span className="text-slate-400 text-[11px] flex items-center gap-1 font-mono">
+                                  <Clock className="h-3 w-3 text-slate-500" /> {sub.runtimeMs}ms
+                                </span>
+                              )}
+                              {sub.memoryMb != null && (
+                                <span className="text-slate-400 text-[11px] flex items-center gap-1 font-mono">
+                                  <Cpu className="h-3 w-3 text-slate-500" /> {sub.memoryMb} MB
+                                </span>
+                              )}
+                              {sub.timeComplexity && (
+                                <span className="text-amber-400/90 text-[11px] font-mono">
+                                  {sub.timeComplexity}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                              <span className="text-[11px] text-slate-500">
+                                {sub.createdAt ? new Date(sub.createdAt).toLocaleString() : 'Recent attempt'}
+                              </span>
+                              {sub.code && (
+                                <button
+                                  onClick={() => {
+                                    setCode(sub.code);
+                                    if (sub.language && ['javascript', 'python', 'java', 'cpp'].includes(sub.language)) {
+                                      setLanguage(sub.language as any);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white font-semibold text-[11px] transition-colors"
+                                  title="Load this submission into the code editor"
+                                >
+                                  Load Code
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

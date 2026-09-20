@@ -1,5 +1,8 @@
 // In-memory persistent session storage across warm invocations
 global.__skillforge_submissions = global.__skillforge_submissions || [];
+global.__skillforge_user_progress = global.__skillforge_user_progress || {};
+global.__skillforge_resume_analyses = global.__skillforge_resume_analyses || [];
+global.__skillforge_resumes = global.__skillforge_resumes || [];
 
 const vm = require('vm');
 const zlib = require('zlib');
@@ -419,8 +422,18 @@ exports.handler = async (event) => {
     }
 
     // Profile data: /profile or /api/profile
-    if (path.includes("/profile")) {
-        const solvedCount = global.__skillforge_submissions.filter(s => s.status === 'Accepted').length;
+    if (path.includes("/profile") && !path.includes("/profile/add-skills")) {
+        const solvedSlugs = new Set();
+        Object.keys(global.__skillforge_user_progress).forEach(slug => {
+            if (global.__skillforge_user_progress[slug].status === 'Solved') solvedSlugs.add(slug);
+        });
+        global.__skillforge_submissions.forEach(s => {
+            if (s.status === 'Accepted') solvedSlugs.add(s.problemSlug);
+        });
+        const solvedCount = solvedSlugs.size;
+
+        const latestResume = global.__skillforge_resume_analyses[0] || null;
+
         return {
             statusCode: 200,
             headers: defaultHeaders,
@@ -428,11 +441,28 @@ exports.handler = async (event) => {
                 success: true,
                 profile: {
                     careerGoal: "Software Engineer",
+                    targetRole: "Software Engineer",
+                    bio: "Aspiring software engineer passionate about building scalable, high-impact systems.",
                     currentLevel: "Intermediate",
-                    readinessScore: Math.min(95, 70 + solvedCount * 2),
+                    weeklyTimeCommit: "1 hour/day",
+                    goalDeadline: "Placement",
+                    knownTechs: JSON.stringify(["Java", "SQL", "Git", "React", "TypeScript"]),
+                    readinessScore: Math.min(95, 75 + solvedCount * 2),
+                    technicalScore: Math.min(95, 80 + solvedCount * 2),
+                    problemSolvingScore: Math.min(95, 78 + solvedCount * 2),
+                    communicationScore: 76,
+                    interviewScore: 79,
                     xp: 450 + solvedCount * 50,
                     streakDays: 7
-                }
+                },
+                stats: {
+                    enrolledCourses: 3,
+                    problemsSolved: solvedCount,
+                    mockInterviewsCount: 2,
+                    quizzesCompleted: 5
+                },
+                recentSubmissions: global.__skillforge_submissions.slice(0, 5),
+                latestResumeAnalysis: latestResume
             })
         };
     }
@@ -554,21 +584,63 @@ exports.handler = async (event) => {
         };
     }
 
-    // Coding Submissions: GET /coding/submissions
-    if (path.includes("/coding/submissions") && method === "GET") {
+    // Coding Submissions for specific problem: GET /coding/problems/:slug/submissions
+    if (path.includes("/coding/problems/") && path.includes("/submissions") && method === "GET") {
+        const parts = path.split('/');
+        const pIndex = parts.indexOf("problems");
+        const slug = pIndex !== -1 && parts[pIndex + 1] ? parts[pIndex + 1] : 'two-sum';
+        const subs = global.__skillforge_submissions.filter(s => s.problemSlug === slug);
+        const prog = global.__skillforge_user_progress[slug] || null;
+        const isSolved = prog?.status === 'Solved' || subs.some(s => s.status === 'Accepted');
         return {
             statusCode: 200,
             headers: defaultHeaders,
-            body: JSON.stringify(global.__skillforge_submissions)
+            body: JSON.stringify({
+                slug,
+                status: isSolved ? 'Solved' : (subs.length > 0 ? 'Attempted' : 'Not Attempted'),
+                progress: prog,
+                submissions: subs
+            })
+        };
+    }
+
+    // Coding Submissions: GET /coding/submissions
+    if (path.includes("/coding/submissions") && method === "GET") {
+        const urlParams = event.queryStringParameters || {};
+        const problemSlug = urlParams.problemSlug;
+        const result = problemSlug
+            ? global.__skillforge_submissions.filter(s => s.problemSlug === problemSlug)
+            : global.__skillforge_submissions;
+        return {
+            statusCode: 200,
+            headers: defaultHeaders,
+            body: JSON.stringify(result)
         };
     }
 
     // Coding Stats: GET /coding/stats
     if (path.includes("/coding/stats")) {
-        const solved = new Set(global.__skillforge_submissions.filter(s => s.status === 'Accepted').map(s => s.problemSlug));
-        const attempted = new Set(global.__skillforge_submissions.map(s => s.problemSlug));
-        const totalSolved = solved.size;
-        const totalAttempted = attempted.size;
+        const solvedSlugs = new Set();
+        const attemptedSlugs = new Set();
+
+        // 1. Process user progress
+        Object.keys(global.__skillforge_user_progress).forEach(slug => {
+            const p = global.__skillforge_user_progress[slug];
+            if (p.status === 'Solved') solvedSlugs.add(slug);
+            else attemptedSlugs.add(slug);
+        });
+
+        // 2. Process all submissions
+        global.__skillforge_submissions.forEach(s => {
+            if (s.status === 'Accepted') solvedSlugs.add(s.problemSlug);
+            else attemptedSlugs.add(s.problemSlug);
+        });
+
+        // Once solved, never only attempted
+        solvedSlugs.forEach(slug => attemptedSlugs.delete(slug));
+
+        const totalSolved = solvedSlugs.size;
+        const totalAttempted = solvedSlugs.size + attemptedSlugs.size;
         const accuracy = totalAttempted > 0 ? Math.round((totalSolved / totalAttempted) * 100) : 0;
 
         return {
@@ -578,6 +650,9 @@ exports.handler = async (event) => {
                 totalProblems: 24,
                 totalSolved,
                 totalAttempted,
+                solvedSlugs: Array.from(solvedSlugs),
+                attemptedSlugs: Array.from(attemptedSlugs),
+                problemProgress: global.__skillforge_user_progress,
                 accuracy,
                 streakDays: 7,
                 xp: 450 + totalSolved * 50,
@@ -678,6 +753,35 @@ exports.handler = async (event) => {
 
         global.__skillforge_submissions.unshift(submissionRecord);
 
+        // Track and persist user progress permanently (once Solved, always Solved!)
+        const isPassing = execResult.status === 'Accepted';
+        const existingProg = global.__skillforge_user_progress[slug] || null;
+        const wasAlreadySolved = existingProg?.status === 'Solved';
+        const newStatus = (wasAlreadySolved || isPassing) ? 'Solved' : 'Attempted';
+        const firstSolvedAt = existingProg?.firstSolvedAt || (isPassing ? new Date().toISOString() : null);
+
+        const bestRuntimeMs = isPassing
+            ? (existingProg?.bestRuntimeMs != null ? Math.min(existingProg.bestRuntimeMs, execResult.runtimeMs) : execResult.runtimeMs)
+            : existingProg?.bestRuntimeMs;
+
+        const bestMemoryMb = isPassing
+            ? (existingProg?.bestMemoryMb != null ? Math.min(existingProg.bestMemoryMb, parseFloat(memoryMB)) : parseFloat(memoryMB))
+            : existingProg?.bestMemoryMb;
+
+        const progressRecord = {
+            problemSlug: slug,
+            status: newStatus,
+            totalSubmissions: (existingProg?.totalSubmissions || 0) + 1,
+            successfulSubmissions: (existingProg?.successfulSubmissions || 0) + (isPassing ? 1 : 0),
+            bestRuntimeMs,
+            bestMemoryMb,
+            firstSolvedAt,
+            lastSubmittedAt: new Date().toISOString(),
+            lastLanguage: language || 'javascript',
+            lastCode: code || ''
+        };
+        global.__skillforge_user_progress[slug] = progressRecord;
+
         const executionObj = {
             status: execResult.status,
             passedTests: execResult.passedTests,
@@ -704,6 +808,7 @@ exports.handler = async (event) => {
             body: JSON.stringify({
                 ...submissionRecord,
                 submission: submissionRecord,
+                progress: progressRecord,
                 execution: executionObj,
                 review: review
             })
@@ -781,18 +886,35 @@ exports.handler = async (event) => {
 
         const role = parsedBody.targetRole || "Software Engineer";
         const analysis = runResumeAnalysis(extractedText, role, parsedBody.jobDescription || "");
+        const analysisId = `res_ana_${Date.now()}`;
+        const resumeId = `res_${Date.now()}`;
+
+        const analysisRecord = {
+            ...analysis,
+            id: analysisId,
+            resumeId,
+            targetRole: role,
+            extractedText,
+            status: "COMPLETED",
+            createdAt: new Date().toISOString()
+        };
+
+        global.__skillforge_resume_analyses.unshift(analysisRecord);
+        global.__skillforge_resumes.unshift({
+            id: resumeId,
+            resumeId,
+            filename: isPdf ? "uploaded_resume.pdf" : "uploaded_resume.docx",
+            fileType: isPdf ? "pdf" : "docx",
+            fileSize: rawBuffer ? rawBuffer.length : 1024,
+            analysisStatus: "COMPLETED",
+            analysisId,
+            uploadedAt: new Date().toISOString()
+        });
 
         return {
             statusCode: 200,
             headers: defaultHeaders,
-            body: JSON.stringify({
-                ...analysis,
-                id: `res_ana_${Date.now()}`,
-                resumeId: `res_${Date.now()}`,
-                extractedText,
-                status: "COMPLETED",
-                createdAt: new Date().toISOString()
-            })
+            body: JSON.stringify(analysisRecord)
         };
     }
 
@@ -811,11 +933,50 @@ exports.handler = async (event) => {
         }
 
         const analysisResponse = runResumeAnalysis(text, role, jd);
+        const analysisId = `res_ana_${Date.now()}`;
+        const analysisRecord = {
+            ...analysisResponse,
+            id: analysisId,
+            targetRole: role,
+            resumeText: text,
+            createdAt: new Date().toISOString()
+        };
+        global.__skillforge_resume_analyses.unshift(analysisRecord);
 
         return {
             statusCode: 200,
             headers: defaultHeaders,
-            body: JSON.stringify(analysisResponse)
+            body: JSON.stringify(analysisRecord)
+        };
+    }
+
+    // Resume History: GET /resume/history
+    if (path.includes("/resume/history") && method === "GET") {
+        return {
+            statusCode: 200,
+            headers: defaultHeaders,
+            body: JSON.stringify(global.__skillforge_resume_analyses)
+        };
+    }
+
+    // Uploaded Resumes: GET /resume/list
+    if (path.includes("/resume/list") && method === "GET") {
+        return {
+            statusCode: 200,
+            headers: defaultHeaders,
+            body: JSON.stringify({ resumes: global.__skillforge_resumes })
+        };
+    }
+
+    // Arena Leaderboard (Retired / Redirected)
+    if (path.includes("/arena") && method === "GET") {
+        return {
+            statusCode: 200,
+            headers: defaultHeaders,
+            body: JSON.stringify({
+                leaderboard: [],
+                message: "Arena has been retired in favor of Coding Playground."
+            })
         };
     }
 
@@ -830,7 +991,7 @@ exports.handler = async (event) => {
                 primaryFocus: "Graph Algorithms & Trees",
                 advice: "Consistent daily deliberate practice outperforms marathon cramming. Let's tackle your current friction points in Graph traversal!",
                 plan: [
-                    { title: "Resume Practice Challenge", type: "Arena", link: "/arena", duration: "10 min" },
+                    { title: "Solve Playground Challenge", type: "Coding", link: "/coding", duration: "10 min" },
                     { title: "Check Skill Gap Matrix", type: "Skill Gap", link: "/skills/gap-analysis", duration: "5 min" },
                     { title: "Inspect Skill Passport Credentials", type: "Passport", link: "/passport", duration: "5 min" }
                 ]

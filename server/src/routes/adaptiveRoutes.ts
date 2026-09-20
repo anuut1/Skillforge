@@ -8,6 +8,8 @@ import {
   getCodingProblems,
   getCodingProblem,
   submitCodingSolution,
+  getCodingSubmissions,
+  getProblemSubmissionHistory,
   getPlaygroundStats,
   getPlaygroundCategories,
   getAdaptiveQuiz,
@@ -57,6 +59,8 @@ router.get('/coding/categories', getPlaygroundCategories);
 router.get('/coding/stats', optionalAuthenticate, getPlaygroundStats);
 router.get('/coding/problems', optionalAuthenticate, getCodingProblems);
 router.get('/coding/problems/:slug', optionalAuthenticate, getCodingProblem);
+router.get('/coding/problems/:slug/submissions', authenticate, getProblemSubmissionHistory);
+router.get('/coding/submissions', authenticate, getCodingSubmissions);
 router.post('/coding/submit', authenticate, submitCodingSolution);
 
 // Adaptive Quizzes

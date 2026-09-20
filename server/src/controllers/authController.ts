@@ -297,7 +297,7 @@ export const getNotifications = async (req: Request, res: Response) => {
           data: {
             userId,
             title: 'Welcome to SkillForge!',
-            message: 'Your personalized skill journey is ready. Complete your daily challenge in the Arena.',
+            message: 'Your personalized skill journey is ready. Complete your daily challenge in the Coding Playground.',
             type: 'BADGE',
             isRead: false
           }

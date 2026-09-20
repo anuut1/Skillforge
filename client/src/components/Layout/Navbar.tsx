@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { GraduationCap, LogOut, User as UserIcon, Swords, Briefcase } from 'lucide-react';
+import { GraduationCap, LogOut, User as UserIcon, Briefcase } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -48,9 +48,6 @@ const Navbar: React.FC = () => {
               </Link>
               <Link to="/placement-hub" className="text-slate-300 hover:text-indigo-400 transition-colors flex items-center gap-1">
                 <Briefcase className="h-3.5 w-3.5 text-indigo-400" /> Placement Hub
-              </Link>
-              <Link to="/arena" className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1">
-                <Swords className="h-3.5 w-3.5" /> Arena
               </Link>
               <Link to="/profile" className="text-slate-300 hover:text-indigo-400 transition-colors">
                 Profile

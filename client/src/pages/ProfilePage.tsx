@@ -23,9 +23,14 @@ import {
   Activity,
   Briefcase,
   GraduationCap,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  AlertTriangle,
+  Layers,
+  ArrowUpRight,
+  FileCheck2
 } from 'lucide-react';
-import type { StudentProfile } from '../types';
+import type { StudentProfile, DetailedResumeAnalysis } from '../types';
 
 const GithubIcon = ({ className = "h-3.5 w-3.5" }: { className?: string }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24">
@@ -80,7 +85,10 @@ const ProfilePage: React.FC = () => {
   });
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'skills' | 'achievements' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'resume' | 'skills' | 'achievements' | 'activity'>('overview');
+  const [resumeHistory, setResumeHistory] = useState<DetailedResumeAnalysis[]>([]);
+  const [selectedResumeIdx, setSelectedResumeIdx] = useState<number>(0);
+  const [loadingResume, setLoadingResume] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -117,6 +125,23 @@ const ProfilePage: React.FC = () => {
       if (res.data.stats) {
         setStats(res.data.stats);
       }
+
+      // Fetch user's genuine resume analysis history
+      setLoadingResume(true);
+      client.get('/resume/history')
+        .then(r => {
+          if (Array.isArray(r.data) && r.data.length > 0) {
+            setResumeHistory(r.data);
+          } else if (res.data.latestResumeAnalysis) {
+            setResumeHistory([res.data.latestResumeAnalysis]);
+          }
+        })
+        .catch(() => {
+          if (res.data.latestResumeAnalysis) {
+            setResumeHistory([res.data.latestResumeAnalysis]);
+          }
+        })
+        .finally(() => setLoadingResume(false));
 
       if (user?.name) setName(user.name);
       if (p) {
@@ -231,7 +256,7 @@ const ProfilePage: React.FC = () => {
     {
       id: 'code-master',
       title: 'Algorithm Craftsman',
-      description: 'Submit and pass 10 coding arena problems with optimal asymptotic complexity.',
+      description: 'Submit and pass 10 coding playground problems with optimal asymptotic complexity.',
       category: 'coding',
       icon: 'Code',
       unlocked: stats.problemsSolved >= 10,
@@ -429,6 +454,17 @@ const ProfilePage: React.FC = () => {
               }`}
             >
               <Activity className="h-4 w-4" /> Overview & Competencies
+            </button>
+
+            <button
+              onClick={() => setActiveTab('resume')}
+              className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                activeTab === 'resume'
+                  ? 'border-indigo-500 text-indigo-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileText className="h-4 w-4" /> Resume Analysis {resumeHistory.length > 0 ? `(${resumeHistory[0].atsScore}%)` : ''}
             </button>
 
             <button
@@ -641,13 +677,414 @@ const ProfilePage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Resume & ATS Readiness Overview Card */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-indigo-400" /> Resume & ATS Readiness
+                    </h3>
+                    {resumeHistory.length > 0 ? (
+                      <button
+                        onClick={() => setActiveTab('resume')}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                      >
+                        Full Analysis <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => navigate('/resume')}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                      >
+                        Upload Resume <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {resumeHistory.length > 0 ? (
+                    (() => {
+                      const latest = resumeHistory[0];
+                      const ats = latest.atsScore ?? 0;
+                      return (
+                        <div className="space-y-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-14 h-14 rounded-full border-4 flex items-center justify-center font-black text-base shrink-0 ${
+                                ats >= 80 ? 'border-emerald-500 text-emerald-400' : ats >= 60 ? 'border-amber-500 text-amber-400' : 'border-rose-500 text-rose-400'
+                              }`}>
+                                {ats}%
+                              </div>
+                              <div>
+                                <div className="text-xs font-bold text-white">
+                                  {latest.targetRole || latest.jobTitle || 'Target Role Analyzed'}
+                                </div>
+                                <div className="text-[11px] text-slate-400 mt-0.5">
+                                  {latest.companyName ? `Tailored for ${latest.companyName} • ` : ''}
+                                  {latest.createdAt ? new Date(latest.createdAt).toLocaleDateString() : 'Recent analysis'}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                    ats >= 80 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                    ats >= 60 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                    'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                  }`}>
+                                    {ats >= 80 ? 'Strong ATS Match' : ats >= 60 ? 'Moderate Fit' : 'Needs Optimization'}
+                                  </span>
+                                  {resumeHistory.length > 1 && (
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                      {resumeHistory.length} versions tracked
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setActiveTab('resume')}
+                              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
+                            >
+                              View Breakdown
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="bg-slate-800/30 border border-slate-700/40 p-2.5 rounded-lg text-center">
+                              <span className="text-slate-400 text-[10px] uppercase font-bold block">Skills Match</span>
+                              <span className="text-sm font-bold text-white">{latest.skillsMatchScore ?? 0}%</span>
+                            </div>
+                            <div className="bg-slate-800/30 border border-slate-700/40 p-2.5 rounded-lg text-center">
+                              <span className="text-slate-400 text-[10px] uppercase font-bold block">Keywords</span>
+                              <span className="text-sm font-bold text-white">{latest.keywordMatchScore ?? 0}%</span>
+                            </div>
+                            <div className="bg-slate-800/30 border border-slate-700/40 p-2.5 rounded-lg text-center">
+                              <span className="text-slate-400 text-[10px] uppercase font-bold block">Experience</span>
+                              <span className="text-sm font-bold text-white">{latest.experienceMatchScore ?? 0}%</span>
+                            </div>
+                            <div className="bg-slate-800/30 border border-slate-700/40 p-2.5 rounded-lg text-center">
+                              <span className="text-slate-400 text-[10px] uppercase font-bold block">Formatting</span>
+                              <span className="text-sm font-bold text-white">{latest.atsFormattingScore ?? 0}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="p-5 bg-slate-800/30 border border-slate-700/40 border-dashed rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 border border-slate-700 shrink-0">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">No Resume Analyzed Yet</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            Upload your resume (PDF or DOCX) to benchmark ATS scores, detect skill matches, and get AI recommendations.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate('/resume')}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors shrink-0 shadow-lg shadow-indigo-600/20"
+                      >
+                        Analyze Resume
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 2: EVIDENCE-BASED SKILLS */}
+        {/* TAB 2: RESUME ANALYSIS */}
+        {/* ========================================================================= */}
+        {activeTab === 'resume' && (
+          <div className="space-y-6">
+            {loadingResume ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 text-center shadow-xl max-w-xl mx-auto flex flex-col items-center">
+                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+                <p className="text-xs text-slate-400">Loading verified resume diagnostics...</p>
+              </div>
+            ) : resumeHistory.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 text-center shadow-xl max-w-xl mx-auto">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+                  <FileText className="h-8 w-8" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">No Resume Analysis Linked</h3>
+                <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto mb-6">
+                  You haven't analyzed a resume for this account yet. Upload your PDF or DOCX file to generate an instant ATS score, detect extracted technical skills, identify gaps against real job listings, and receive line-by-line bullet improvements.
+                </p>
+                <button
+                  onClick={() => navigate('/resume')}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 transition-all"
+                >
+                  <FileCheck2 className="h-4 w-4" /> Go to Resume Analyzer
+                </button>
+              </div>
+            ) : (
+              (() => {
+                const current = resumeHistory[Math.min(selectedResumeIdx, resumeHistory.length - 1)] || resumeHistory[0];
+                const ats = current.atsScore ?? 0;
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header & Version Switcher */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <FileText className="h-5 w-5 text-indigo-400" /> ATS Resume Diagnostic Report
+                          </h3>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            ats >= 80 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                            ats >= 60 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                            'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                          }`}>
+                            {ats >= 80 ? 'ATS Optimized' : ats >= 60 ? 'Competitive' : 'Action Required'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Tailored for <strong className="text-slate-200">{current.targetRole || current.jobTitle || 'Software Engineer'}</strong>
+                          {current.companyName ? ` at ${current.companyName}` : ''} • Analyzed on {current.createdAt ? new Date(current.createdAt).toLocaleDateString() : 'Recent'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => navigate('/resume')}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all"
+                        >
+                          <FileCheck2 className="h-4 w-4" /> Upload New Version
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Version Selector (if multiple versions) */}
+                    {resumeHistory.length > 1 && (
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                        <span className="text-xs text-slate-400 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1.5 mr-2">
+                          <Layers className="h-3.5 w-3.5 text-indigo-400" /> Version History:
+                        </span>
+                        {resumeHistory.map((ver, idx) => (
+                          <button
+                            key={ver.id || idx}
+                            onClick={() => setSelectedResumeIdx(idx)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap flex items-center gap-2 ${
+                              selectedResumeIdx === idx
+                                ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
+                                : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                            }`}
+                          >
+                            <span>{ver.resumeVersionName || ver.targetRole || `Version ${resumeHistory.length - idx}`}</span>
+                            <span className={`px-1.5 py-0.5 text-[10px] rounded ${
+                              (ver.atsScore ?? 0) >= 80 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                            }`}>
+                              {ver.atsScore}%
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ATS Metrics Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                      {/* Big Score Card */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col items-center justify-center text-center">
+                        <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center font-black text-2xl mb-2 ${
+                          ats >= 80 ? 'border-emerald-500 text-emerald-400' : ats >= 60 ? 'border-amber-500 text-amber-400' : 'border-rose-500 text-rose-400'
+                        }`}>
+                          {ats}%
+                        </div>
+                        <div className="text-xs font-bold text-white uppercase tracking-wider">Overall ATS Score</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">Industry Standard Parser</div>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Skills Match</span>
+                          <div className="text-xl font-black text-white mt-1">{current.skillsMatchScore ?? 0}%</div>
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-3">
+                          <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${current.skillsMatchScore ?? 0}%` }} />
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Keywords</span>
+                          <div className="text-xl font-black text-white mt-1">{current.keywordMatchScore ?? 0}%</div>
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-3">
+                          <div className="bg-purple-500 h-full rounded-full" style={{ width: `${current.keywordMatchScore ?? 0}%` }} />
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Experience Match</span>
+                          <div className="text-xl font-black text-white mt-1">{current.experienceMatchScore ?? 0}%</div>
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-3">
+                          <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${current.experienceMatchScore ?? 0}%` }} />
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ATS Formatting</span>
+                          <div className="text-xl font-black text-white mt-1">{current.atsFormattingScore ?? 0}%</div>
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-3">
+                          <div className="bg-amber-500 h-full rounded-full" style={{ width: `${current.atsFormattingScore ?? 0}%` }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detected Skills vs Missing Skills */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Detected / Matching Skills */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                            Detected Matching Skills ({current.matchingSkills?.length || 0})
+                          </h4>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            Validated
+                          </span>
+                        </div>
+
+                        {current.matchingSkills && current.matchingSkills.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {current.matchingSkills.map((sk, i) => (
+                              <div
+                                key={i}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-1.5"
+                                title={sk.whyItMatters}
+                              >
+                                <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                                <span className="font-semibold">{sk.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">No matching skills detected in this version.</p>
+                        )}
+                      </div>
+
+                      {/* Missing / Critical Skills */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-amber-400" />
+                            Missing Critical Skills ({current.missingSkills?.length || 0})
+                          </h4>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            Actionable Gap
+                          </span>
+                        </div>
+
+                        {current.missingSkills && current.missingSkills.length > 0 ? (
+                          <div className="space-y-2.5">
+                            {current.missingSkills.map((sk, i) => (
+                              <div
+                                key={i}
+                                className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs flex flex-col gap-1"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                                    <AlertTriangle className="h-3 w-3 text-amber-400" /> {sk.name}
+                                  </span>
+                                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                    sk.priority === 'Critical' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'
+                                  }`}>
+                                    {sk.priority}
+                                  </span>
+                                </div>
+                                {sk.whyItMatters && (
+                                  <p className="text-[11px] text-slate-400">{sk.whyItMatters}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="h-4 w-4" /> No critical skills missing for this target role!
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ATS Issues & Formatting Checklist */}
+                    {current.atsIssues && current.atsIssues.length > 0 && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 pb-3 border-b border-slate-800">
+                          <Layers className="h-4 w-4 text-indigo-400" />
+                          ATS Parsing & Compliance Recommendations ({current.atsIssues.length})
+                        </h4>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {current.atsIssues.map((issue, idx) => (
+                            <div key={idx} className="p-3.5 bg-slate-800/50 border border-slate-700/60 rounded-xl space-y-1.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-white">{issue.issue}</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                                  issue.severity === 'High' ? 'bg-rose-500/20 text-rose-400' :
+                                  issue.severity === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
+                                  'bg-slate-700 text-slate-300'
+                                }`}>
+                                  {issue.severity}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400">
+                                <strong className="text-indigo-300">Fix:</strong> {issue.fix}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section Feedback */}
+                    {current.sectionFeedback && current.sectionFeedback.length > 0 && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 pb-3 border-b border-slate-800">
+                          <Sparkles className="h-4 w-4 text-purple-400" />
+                          Section-by-Section Quality Review
+                        </h4>
+
+                        <div className="space-y-3">
+                          {current.sectionFeedback.map((sec, idx) => (
+                            <div key={idx} className="p-4 bg-slate-800/40 border border-slate-700/60 rounded-xl space-y-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-white text-sm">{sec.section}</span>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  sec.status === 'Strong' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                  sec.status === 'Needs Improvement' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                  'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                }`}>
+                                  {sec.status}
+                                </span>
+                              </div>
+                              {sec.problem && (
+                                <p className="text-slate-400"><strong className="text-amber-400">Identified:</strong> {sec.problem}</p>
+                              )}
+                              {sec.suggested && (
+                                <p className="text-slate-300"><strong className="text-emerald-400">Suggestion:</strong> {sec.suggested}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 3: EVIDENCE-BASED SKILLS */}
         {/* ========================================================================= */}
         {activeTab === 'skills' && (
           <div className="space-y-6">

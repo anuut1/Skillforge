@@ -13,3 +13,4 @@ build/
 *.tfstate.*
 tfplan
 scratch/
+*.zip

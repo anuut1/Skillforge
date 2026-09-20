@@ -10,7 +10,6 @@ import {
   Code2,
   FolderGit2,
   Briefcase,
-  Swords,
   BookOpen,
   User,
   LogOut,
@@ -117,7 +116,7 @@ const AuthenticatedLayout: React.FC = () => {
     } else if (q.includes('resume') || q.includes('cv') || q.includes('ats')) {
       navigate('/resume');
     } else if (q.includes('arena') || q.includes('chal') || q.includes('lead')) {
-      navigate('/arena');
+      navigate('/coding');
     } else if (q.includes('interv') || q.includes('mock')) {
       navigate('/interview');
     } else {
@@ -135,7 +134,6 @@ const AuthenticatedLayout: React.FC = () => {
     { to: '/projects', label: 'Projects', icon: FolderGit2 },
     { to: '/placement-hub', label: 'Placement Hub', icon: Briefcase },
     { to: '/resume', label: 'Resume Analyzer', icon: FileText },
-    { to: '/arena', label: 'Arena', icon: Swords },
     { to: '/profile', label: 'Profile', icon: User },
   ];
 
@@ -417,7 +415,6 @@ const AuthenticatedLayout: React.FC = () => {
                 { label: 'Open Coding Playground', to: '/coding/two-sum', desc: 'Practice DSA problems with AI evaluation' },
                 { label: 'Explore Applied Projects', to: '/projects', desc: 'Build and evaluate industry-standard capstones' },
                 { label: 'Open Placement Hub', to: '/placement-hub', desc: 'Access 200+ company questions & interview cheatsheets' },
-                { label: 'Enter Arena & Challenges', to: '/arena', desc: 'Daily challenges, contests, and peer leaderboards' },
                 { label: 'Start AI Mock Interview', to: '/interview', desc: 'Simulate live FAANG-standard technical screen' },
                 { label: 'View Cryptographic Skill Passport', to: '/passport', desc: 'Verified evidence of code and projects' },
                 { label: 'Edit Profile & Settings', to: '/profile', desc: 'Update career track, timeline, and known techs' }

@@ -81,12 +81,20 @@ export const getStudentProfile = async (req: Request, res: Response) => {
       recentQuizAttempts,
       stats: {
         enrolledCourses: enrollmentsCount,
-        problemsSolved: Math.max(14, await prisma.codingSubmission.count({
-          where: {
-            userId,
-            status: { in: ['Accepted', 'ACCEPTED', 'Passed', 'PASSED'] }
-          }
-        })),
+        problemsSolved: await (async () => {
+          const solvedProgressCount = await prisma.userCodingProgress.count({
+            where: { userId, status: 'Solved' }
+          });
+          if (solvedProgressCount > 0) return solvedProgressCount;
+          const acceptedSubs = await prisma.codingSubmission.findMany({
+            where: {
+              userId,
+              status: { in: ['Accepted', 'ACCEPTED', 'Passed', 'PASSED'] }
+            },
+            select: { problemId: true }
+          });
+          return new Set(acceptedSubs.map(s => s.problemId)).size;
+        })(),
         mockInterviewsCount: await prisma.interviewSession.count({ where: { userId, status: 'COMPLETED' } }),
         quizzesCompleted: await prisma.quizAttempt.count({ where: { userId } })
       }
@@ -323,12 +331,18 @@ export const getPlaygroundStats = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
 
-    // Fetch all user submissions
-    const submissions = await prisma.codingSubmission.findMany({
-      where: { userId },
-      include: { problem: true },
-      orderBy: { createdAt: 'desc' }
-    });
+    // Fetch all user submissions and permanent user progress
+    const [submissions, userProgressList] = await Promise.all([
+      prisma.codingSubmission.findMany({
+        where: { userId },
+        include: { problem: true },
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.userCodingProgress.findMany({
+        where: { userId },
+        include: { problem: true }
+      })
+    ]);
 
     // All problems in system
     const allProblems = await prisma.codingProblem.findMany();
@@ -336,14 +350,49 @@ export const getPlaygroundStats = async (req: Request, res: Response) => {
 
     // Build map of problem solved/attempted status
     const solvedProblemIds = new Set<string>();
+    const solvedProblemSlugs = new Set<string>();
     const attemptedProblemIds = new Set<string>();
+    const attemptedProblemSlugs = new Set<string>();
+    const problemProgressMap: Record<string, any> = {};
 
-    submissions.forEach(sub => {
-      attemptedProblemIds.add(sub.problemId);
-      if (sub.status === 'Accepted') {
-        solvedProblemIds.add(sub.problemId);
+    // 1. Process permanent user coding progress
+    userProgressList.forEach(prog => {
+      const slug = prog.problem?.slug;
+      if (prog.status === 'Solved') {
+        solvedProblemIds.add(prog.problemId);
+        if (slug) solvedProblemSlugs.add(slug);
+      } else {
+        attemptedProblemIds.add(prog.problemId);
+        if (slug) attemptedProblemSlugs.add(slug);
+      }
+      if (slug) {
+        problemProgressMap[slug] = {
+          status: prog.status,
+          totalSubmissions: prog.totalSubmissions,
+          successfulSubmissions: prog.successfulSubmissions,
+          bestRuntimeMs: prog.bestRuntimeMs,
+          bestMemoryMb: prog.bestMemoryMb,
+          firstSolvedAt: prog.firstSolvedAt,
+          lastSubmittedAt: prog.lastSubmittedAt,
+          lastLanguage: prog.lastLanguage,
+          lastCode: prog.lastCode
+        };
       }
     });
+
+    // 2. Incorporate submissions (guaranteeing that historical Accepted are marked Solved)
+    submissions.forEach(sub => {
+      attemptedProblemIds.add(sub.problemId);
+      if (sub.problem?.slug) attemptedProblemSlugs.add(sub.problem.slug);
+
+      if (sub.status === 'Accepted') {
+        solvedProblemIds.add(sub.problemId);
+        if (sub.problem?.slug) solvedProblemSlugs.add(sub.problem.slug);
+      }
+    });
+
+    // Remove solved from attempted list so categories don't double count
+    solvedProblemSlugs.forEach(slug => attemptedProblemSlugs.delete(slug));
 
     // Counts by difficulty
     const statsByDifficulty = {
@@ -362,7 +411,7 @@ export const getPlaygroundStats = async (req: Request, res: Response) => {
       if (statsByDifficulty[diff]) {
         statsByDifficulty[diff].total++;
         if (solvedProblemIds.has(p.id)) statsByDifficulty[diff].solved++;
-        if (attemptedProblemIds.has(p.id)) statsByDifficulty[diff].attempted++;
+        else if (attemptedProblemIds.has(p.id)) statsByDifficulty[diff].attempted++;
       }
 
       if (!topicProgress[p.category]) {
@@ -370,7 +419,7 @@ export const getPlaygroundStats = async (req: Request, res: Response) => {
       }
       topicProgress[p.category].total++;
       if (solvedProblemIds.has(p.id)) topicProgress[p.category].solved++;
-      if (attemptedProblemIds.has(p.id)) topicProgress[p.category].attempted++;
+      else if (attemptedProblemIds.has(p.id)) topicProgress[p.category].attempted++;
     });
 
     // Overall accuracy
@@ -411,6 +460,9 @@ export const getPlaygroundStats = async (req: Request, res: Response) => {
       totalProblems: totalCount,
       totalSolved: solvedProblemIds.size,
       totalAttempted: attemptedProblemIds.size,
+      solvedSlugs: Array.from(solvedProblemSlugs),
+      attemptedSlugs: Array.from(attemptedProblemSlugs),
+      problemProgress: problemProgressMap,
       accuracy,
       streakDays: profile?.streakDays || 1,
       xp: profile?.xp || 0,
@@ -480,15 +532,23 @@ export const getCodingProblems = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'asc' }
     });
 
+    let userProgressList: any[] = [];
     let userSubmissions: any[] = [];
     if (userId) {
-      userSubmissions = await prisma.codingSubmission.findMany({
-        where: { userId },
-        select: { problemId: true, status: true }
-      });
+      [userProgressList, userSubmissions] = await Promise.all([
+        prisma.userCodingProgress.findMany({ where: { userId } }),
+        prisma.codingSubmission.findMany({
+          where: { userId },
+          select: { problemId: true, status: true }
+        })
+      ]);
     }
 
+    const progressMap = new Map<string, any>();
+    userProgressList.forEach(p => progressMap.set(p.problemId, p));
+
     const statusMap = new Map<string, 'Solved' | 'Attempted'>();
+    // First check historical submissions
     userSubmissions.forEach(sub => {
       if (sub.status === 'Accepted') {
         statusMap.set(sub.problemId, 'Solved');
@@ -497,15 +557,38 @@ export const getCodingProblems = async (req: Request, res: Response) => {
       }
     });
 
-    let results = problems.map(p => ({
-      id: p.id,
-      title: p.title,
-      slug: p.slug,
-      difficulty: p.difficulty,
-      category: p.category,
-      relatedSkillName: p.relatedSkillName,
-      userStatus: statusMap.get(p.id) || 'Unsolved'
-    }));
+    // Second, enforce userCodingProgress: Solved permanently wins over Attempted!
+    userProgressList.forEach(prog => {
+      if (prog.status === 'Solved') {
+        statusMap.set(prog.problemId, 'Solved');
+      } else if (prog.status === 'Attempted' && statusMap.get(prog.problemId) !== 'Solved') {
+        statusMap.set(prog.problemId, 'Attempted');
+      }
+    });
+
+    let results = problems.map(p => {
+      const prog = progressMap.get(p.id);
+      const computedStatus = statusMap.get(p.id) || 'Unsolved';
+      return {
+        id: p.id,
+        title: p.title,
+        slug: p.slug,
+        difficulty: p.difficulty,
+        category: p.category,
+        relatedSkillName: p.relatedSkillName,
+        userStatus: computedStatus,
+        progress: prog ? {
+          status: computedStatus,
+          totalSubmissions: prog.totalSubmissions,
+          successfulSubmissions: prog.successfulSubmissions,
+          bestRuntimeMs: prog.bestRuntimeMs,
+          bestMemoryMb: prog.bestMemoryMb,
+          firstSolvedAt: prog.firstSolvedAt,
+          lastSubmittedAt: prog.lastSubmittedAt,
+          lastLanguage: prog.lastLanguage
+        } : null
+      };
+    });
 
     if (status && status !== 'All') {
       results = results.filter(p => p.userStatus === status);
@@ -559,6 +642,7 @@ export const submitCodingSolution = async (req: Request, res: Response) => {
 
     const isPassing = execution.status === 'Accepted';
 
+    // Store this submission attempt — each attempt is preserved permanently!
     const submission = await prisma.codingSubmission.create({
       data: {
         userId,
@@ -575,8 +659,64 @@ export const submitCodingSolution = async (req: Request, res: Response) => {
       }
     });
 
-    // Reward XP only if genuinely accepted
-    if (isPassing) {
+    // Check existing progress
+    const existingProgress = await prisma.userCodingProgress.findUnique({
+      where: {
+        userId_problemId: {
+          userId,
+          problemId: problem.id
+        }
+      }
+    });
+
+    // PERMANENCE RULE: Once solved, always solved! A failing submission NEVER unsets Solved.
+    const wasAlreadySolved = existingProgress?.status === 'Solved';
+    const newStatus = (wasAlreadySolved || isPassing) ? 'Solved' : 'Attempted';
+    const firstSolvedAt = existingProgress?.firstSolvedAt ?? (isPassing ? new Date() : null);
+
+    const bestRuntimeMs = isPassing
+      ? (existingProgress?.bestRuntimeMs != null ? Math.min(existingProgress.bestRuntimeMs, execution.runtimeMs) : execution.runtimeMs)
+      : existingProgress?.bestRuntimeMs;
+
+    const bestMemoryMb = isPassing
+      ? (existingProgress?.bestMemoryMb != null ? Math.min(existingProgress.bestMemoryMb, execution.memoryMb ?? 14.2) : (execution.memoryMb ?? 14.2))
+      : existingProgress?.bestMemoryMb;
+
+    const progress = await prisma.userCodingProgress.upsert({
+      where: {
+        userId_problemId: {
+          userId,
+          problemId: problem.id
+        }
+      },
+      create: {
+        userId,
+        problemId: problem.id,
+        status: newStatus,
+        totalSubmissions: 1,
+        successfulSubmissions: isPassing ? 1 : 0,
+        bestRuntimeMs,
+        bestMemoryMb,
+        firstSolvedAt,
+        lastSubmittedAt: new Date(),
+        lastLanguage: language,
+        lastCode: code
+      },
+      update: {
+        status: newStatus,
+        totalSubmissions: { increment: 1 },
+        ...(isPassing ? { successfulSubmissions: { increment: 1 } } : {}),
+        bestRuntimeMs,
+        bestMemoryMb,
+        ...(firstSolvedAt ? { firstSolvedAt } : {}),
+        lastSubmittedAt: new Date(),
+        lastLanguage: language,
+        lastCode: code
+      }
+    });
+
+    // Reward XP only if newly accepted or genuine solve
+    if (isPassing && !wasAlreadySolved) {
       await prisma.studentProfile.update({
         where: { userId },
         data: { xp: { increment: 50 }, readinessScore: { increment: 1 } }
@@ -586,6 +726,7 @@ export const submitCodingSolution = async (req: Request, res: Response) => {
     res.json({
       submission,
       review,
+      progress,
       execution: {
         status: execution.status,
         passedTests: execution.passedTests,
@@ -601,6 +742,101 @@ export const submitCodingSolution = async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Error submitting solution', error });
+  }
+};
+
+// Retrieve all submissions for the authenticated user (with optional problem filter)
+export const getCodingSubmissions = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { problemSlug, problemId } = req.query;
+
+    const whereClause: any = { userId };
+    if (problemId) {
+      whereClause.problemId = String(problemId);
+    } else if (problemSlug) {
+      const p = await prisma.codingProblem.findUnique({ where: { slug: String(problemSlug) } });
+      if (p) whereClause.problemId = p.id;
+    }
+
+    const submissions = await prisma.codingSubmission.findMany({
+      where: whereClause,
+      include: { problem: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+
+    res.json(submissions.map(s => ({
+      id: s.id,
+      problemId: s.problemId,
+      problemSlug: s.problem?.slug,
+      problemTitle: s.problem?.title,
+      difficulty: s.problem?.difficulty,
+      category: s.problem?.category,
+      language: s.language,
+      code: s.code,
+      status: s.status,
+      passedTests: s.passedTests,
+      totalTests: s.totalTests,
+      runtimeMs: s.runtimeMs,
+      memoryMb: s.memoryMb,
+      timeComplexity: s.timeComplexity,
+      aiReview: s.aiReview ? (() => { try { return JSON.parse(s.aiReview); } catch { return null; } })() : null,
+      createdAt: s.createdAt
+    })));
+  } catch (error) {
+    res.status(500).json({ message: 'Error retrieving coding submissions', error });
+  }
+};
+
+// Retrieve detailed submission history and progress for a single problem
+export const getProblemSubmissionHistory = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { slug } = req.params;
+
+    const problem = await prisma.codingProblem.findUnique({
+      where: { slug }
+    });
+    if (!problem) {
+      return res.status(404).json({ message: 'Problem not found' });
+    }
+
+    const [submissions, progress] = await Promise.all([
+      prisma.codingSubmission.findMany({
+        where: { userId, problemId: problem.id },
+        orderBy: { createdAt: 'desc' },
+        take: 30
+      }),
+      prisma.userCodingProgress.findUnique({
+        where: { userId_problemId: { userId, problemId: problem.id } }
+      })
+    ]);
+
+    const isSolved = progress?.status === 'Solved' || submissions.some(s => s.status === 'Accepted');
+
+    res.json({
+      problemId: problem.id,
+      slug: problem.slug,
+      title: problem.title,
+      status: isSolved ? 'Solved' : (submissions.length > 0 ? 'Attempted' : 'Not Attempted'),
+      progress: progress || null,
+      submissions: submissions.map(s => ({
+        id: s.id,
+        language: s.language,
+        code: s.code,
+        status: s.status,
+        passedTests: s.passedTests,
+        totalTests: s.totalTests,
+        runtimeMs: s.runtimeMs,
+        memoryMb: s.memoryMb,
+        timeComplexity: s.timeComplexity,
+        aiReview: s.aiReview ? (() => { try { return JSON.parse(s.aiReview); } catch { return null; } })() : null,
+        createdAt: s.createdAt
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error retrieving problem submission history', error });
   }
 };
 
@@ -1354,7 +1590,7 @@ export const getSkillPassport = async (req: Request, res: Response) => {
 };
 
 // ============================================================================
-// 12. DAILY CHALLENGE & ARENA
+// 12. DAILY CHALLENGE
 // ============================================================================
 export const getDailyChallenge = async (req: Request, res: Response) => {
   try {
@@ -1389,26 +1625,12 @@ export const getDailyChallenge = async (req: Request, res: Response) => {
   }
 };
 
-export const getArenaLeaderboard = async (req: Request, res: Response) => {
-  try {
-    const users = await prisma.user.findMany({
-      where: { role: 'STUDENT' },
-      include: { profile: true },
-      take: 10
-    });
-
-    const leaderboard = [
-      { rank: 1, name: 'Aarav Sharma', xp: 2450, streak: 28, badge: 'DSA Master' },
-      { rank: 2, name: 'Charlie Kim', xp: 1890, streak: 15, badge: 'Full Stack Titan' },
-      { rank: 3, name: 'Diana Patel', xp: 1620, streak: 12, badge: 'Cloud Explorer' },
-      { rank: 4, name: 'Sarah Jenkins', xp: 1440, streak: 9, badge: 'Code Warrior' },
-      { rank: 5, name: 'Eve Johnson', xp: 1320, streak: 7, badge: 'Consistency Star' }
-    ];
-
-    res.json({ leaderboard });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching leaderboard', error });
-  }
+// Deprecated: Arena has been superseded by Coding Playground
+export const getArenaLeaderboard = async (_req: Request, res: Response) => {
+  res.json({
+    leaderboard: [],
+    message: 'Arena has been integrated directly into Coding Playground.'
+  });
 };
 
 // ============================================================================
@@ -1546,7 +1768,7 @@ export const getCareerCopilotAdvice = async (req: Request, res: Response) => {
     } else {
       adviceText = `For **${targetRole}**, consistent daily deliberate practice outperforms marathon cramming. You currently have **${profile?.streakDays || 1} day streak** and **${profile?.xp || 150} XP**. Let's tackle your current friction points to accelerate your timeline.`;
       recommendations = [
-        { title: 'Resume Practice Challenge', type: 'Arena', link: '/arena', duration: '10 min' },
+        { title: 'Solve Playground Challenge', type: 'Coding', link: '/coding', duration: '10 min' },
         { title: 'Check Skill Gap Matrix', type: 'Skill Gap', link: '/skills/gap-analysis', duration: '5 min' },
         { title: 'Inspect Skill Passport Credentials', type: 'Passport', link: '/passport', duration: '5 min' }
       ];

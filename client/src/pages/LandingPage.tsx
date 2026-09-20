@@ -280,9 +280,9 @@ const LandingPage: React.FC = () => {
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-6">
                 <Flame className="h-6 w-6" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">4. Competitive Arena & Study Rooms</h3>
+              <h3 className="text-xl font-bold text-white mb-2">4. Daily Coding Practice & Study Rooms</h3>
               <p className="text-slate-400 text-xs sm:text-sm leading-relaxed mb-4">
-                Stay consistent through daily streaks, peer leaderboards, XP rewards, and live collaborative study rooms to crack problems with classmates.
+                Stay consistent through daily streaks, DSA mastery, XP rewards, and live collaborative study rooms to crack problems with classmates.
               </p>
             </div>
             <ul className="text-xs text-slate-300 space-y-2 border-t border-slate-800/60 pt-4">
@@ -365,7 +365,7 @@ const LandingPage: React.FC = () => {
                   <CheckCircle2 className="h-4 w-4 text-indigo-400" /> Full Public Course Catalog Access
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-indigo-400" /> Daily Arena Challenges
+                  <CheckCircle2 className="h-4 w-4 text-indigo-400" /> Daily Coding Challenges
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-indigo-400" /> Peer Study Rooms

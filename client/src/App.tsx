@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Layout/Navbar';
@@ -22,7 +22,6 @@ import CodingPlaygroundPage from './pages/CodingPlaygroundPage';
 import ProjectsPage from './pages/ProjectsPage';
 import InterviewSimulatorPage from './pages/InterviewSimulatorPage';
 import PlacementHubPage from './pages/PlacementHubPage';
-import ArenaPage from './pages/ArenaPage';
 import ProfilePage from './pages/ProfilePage';
 import ResumeMatcherPage from './pages/ResumeMatcherPage';
 
@@ -73,7 +72,7 @@ const App: React.FC = () => {
               <Route path="/coding/:slug?" element={<CodingPlaygroundPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/placement-hub" element={<PlacementHubPage />} />
-              <Route path="/arena" element={<ArenaPage />} />
+              <Route path="/arena" element={<Navigate to="/coding" replace />} />
               <Route path="/interview" element={<InterviewSimulatorPage />} />
               <Route path="/resume" element={<ResumeMatcherPage />} />
               <Route path="/resume-analyzer" element={<ResumeMatcherPage />} />

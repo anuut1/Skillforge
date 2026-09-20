@@ -26,6 +26,7 @@ model User {
   profile           StudentProfile?
   skills            StudentSkill[]
   codingSubmissions CodingSubmission[]
+  codingProgress    UserCodingProgress[]
   projectSubmissions ProjectSubmission[]
   interviews        InterviewSession[]
   resumeAnalyses    ResumeAnalysis[]
@@ -195,6 +196,7 @@ model CodingProblem {
   createdAt          DateTime @default(now())
 
   submissions CodingSubmission[]
+  progress    UserCodingProgress[]
 }
 
 model CodingSubmission {
@@ -214,6 +216,28 @@ model CodingSubmission {
 
   user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   problem CodingProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+}
+
+model UserCodingProgress {
+  id                    String    @id @default(uuid())
+  userId                String
+  problemId             String
+  status                String    @default("Attempted") // Solved, Attempted, Needs Review
+  totalSubmissions      Int       @default(1)
+  successfulSubmissions Int       @default(0)
+  bestRuntimeMs         Int?
+  bestMemoryMb          Float?
+  firstSolvedAt         DateTime?
+  lastSubmittedAt       DateTime  @default(now())
+  lastLanguage          String?
+  lastCode              String?
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem CodingProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@index([userId])
+  @@index([problemId])
 }
 
 model Project {

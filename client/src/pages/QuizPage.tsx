@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Award } from 'lucide-react';
 import QuizQuestion from '../components/QuizQuestion';
 import type { Quiz } from '../types';
+import client from '../api/client';
 
 import { ALL_QUIZZES } from '../data/quizzesCatalog';
 
@@ -65,6 +66,40 @@ const QuizPage: React.FC = () => {
     });
     setScore(currentScore);
     setIsSubmitted(true);
+
+    const assessmentResult = {
+      assessmentId: `asmt_${Date.now()}`,
+      quizId: activeQuiz.id,
+      title: activeQuiz.title,
+      score: currentScore,
+      totalQuestions: totalCount,
+      percentage: Math.round((currentScore / totalCount) * 100),
+      correct: currentScore,
+      incorrect: totalCount - currentScore,
+      submittedAt: new Date().toISOString(),
+      answers
+    };
+
+    try {
+      const historyStr = localStorage.getItem('skillforge_assessment_history');
+      const prevHistory = historyStr ? JSON.parse(historyStr) : [];
+      localStorage.setItem('skillforge_assessment_history', JSON.stringify([assessmentResult, ...prevHistory]));
+      // Also update completed map
+      const completedMapStr = localStorage.getItem('skillforge_completed_quizzes');
+      const completedMap = completedMapStr ? JSON.parse(completedMapStr) : {};
+      completedMap[activeQuiz.id] = {
+        score: currentScore,
+        total: totalCount,
+        percentage: Math.round((currentScore / totalCount) * 100),
+        date: new Date().toISOString()
+      };
+      localStorage.setItem('skillforge_completed_quizzes', JSON.stringify(completedMap));
+    } catch (e) {
+      console.error('Failed saving assessment result to local storage', e);
+    }
+
+    // Attempt backend sync
+    client.post('/quiz/submit', assessmentResult).catch(() => {});
   };
 
   const answeredCount = Object.keys(answers).length;
@@ -96,11 +131,41 @@ const QuizPage: React.FC = () => {
           <div className="mb-8 bg-slate-900 border border-slate-700 rounded-2xl p-8 text-center shadow-xl">
             <Award className="h-16 w-16 text-indigo-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-white mb-2">Quiz Completed!</h2>
-            <p className="text-slate-400 mb-6">You scored {score} out of {totalCount}</p>
+            <div className="flex justify-center items-center gap-6 my-6">
+              <div className="text-center px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700">
+                <div className="text-2xl font-black text-indigo-400">{score}/{totalCount}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Score</div>
+              </div>
+              <div className="text-center px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700">
+                <div className="text-2xl font-black text-emerald-400">{Math.round((score / totalCount) * 100)}%</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Percentage</div>
+              </div>
+              <div className="text-center px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700">
+                <div className="text-2xl font-black text-emerald-400">{score}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Correct</div>
+              </div>
+              <div className="text-center px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700">
+                <div className="text-2xl font-black text-red-400">{totalCount - score}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Incorrect</div>
+              </div>
+            </div>
+            <p className="text-slate-400 text-sm mb-6">
+              Detailed explanations and question solutions are shown below for each question.
+            </p>
             <div className="flex justify-center gap-4">
               <button 
+                onClick={() => {
+                  setAnswers({});
+                  setIsSubmitted(false);
+                  setScore(0);
+                }}
+                className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors font-semibold text-sm shadow-md"
+              >
+                Retake Assessment
+              </button>
+              <button 
                 onClick={() => navigate(courseId ? `/courses/${courseId}` : '/placement-hub')}
-                className="px-6 py-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors font-medium border border-slate-700"
+                className="px-6 py-2.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors font-medium border border-slate-700 text-sm"
               >
                 {courseId ? 'Back to Course' : 'Back to Placement Hub'}
               </button>

@@ -34,8 +34,8 @@ const mapCatalogToCourses = (items: typeof COURSES_CATALOG): Course[] => {
       ? 'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&q=80'
       : 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&q=80',
     thumbnailUrl: undefined,
-    enrolledCount: 2840 + c.title.length * 23,
-    lectureCount: c.lectures?.length || 5,
+    enrolledCount: 2840 + (c?.title || '').length * 23,
+    lectureCount: Array.isArray(c?.lectures) ? c.lectures.length : 5,
     price: 0,
     rating: 4.9
   }));

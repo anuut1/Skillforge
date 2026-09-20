@@ -56,12 +56,13 @@ export async function cognitoForgotPassword(email: string): Promise<any> {
   if (!isCognitoEnabled()) throw new Error('Cognito not configured');
   const { CognitoUserPool, CognitoUser } = await import('amazon-cognito-identity-js');
   const userPool = new CognitoUserPool(POOL_DATA);
-  const user = new CognitoUser({ Username: email, Pool: userPool });
+  const user = new CognitoUser({ Username: email.trim(), Pool: userPool });
 
   return new Promise((resolve, reject) => {
     user.forgotPassword({
       onSuccess: (data) => resolve(data),
       onFailure: (err) => reject(err),
+      inputVerificationCode: (data) => resolve(data),
     });
   });
 }

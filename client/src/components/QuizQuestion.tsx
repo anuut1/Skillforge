@@ -65,11 +65,30 @@ const QuizQuestion: React.FC<QuizQuestionProps> = ({
                 disabled={showResult}
                 className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-600 bg-slate-700"
               />
-              <span className="flex-1">{option}</span>
+              <span className="flex-1 font-medium">{option}</span>
+              {showResult && isCorrect && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  Correct
+                </span>
+              )}
+              {showResult && isSelected && !isCorrect && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                  Your Answer
+                </span>
+              )}
             </label>
           );
         })}
       </div>
+
+      {showResult && question.explanation && (
+        <div className="mt-4 p-4 rounded-lg bg-slate-800/80 border border-slate-700 text-sm">
+          <div className="flex items-center gap-1.5 font-semibold text-indigo-400 mb-1">
+            <span>Explanation:</span>
+          </div>
+          <p className="text-slate-300 leading-relaxed">{question.explanation}</p>
+        </div>
+      )}
     </div>
   );
 };

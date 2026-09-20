@@ -1,10 +1,10 @@
-﻿import {
+import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime';
 
-const REGION = process.env.AWS_REGION || process.env.BEDROCK_REGION || 'us-east-1';
-const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+const REGION = process.env.AWS_REGION || process.env.BEDROCK_REGION || 'ap-south-1';
+const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-sonnet-20240229-v1:0';
 
 export const bedrockClient = new BedrockRuntimeClient({
   region: REGION,

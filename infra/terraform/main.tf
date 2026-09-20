@@ -71,13 +71,16 @@ module "api_gateway_lambda" {
   user_data_bucket_arn       = module.s3_cloudfront.user_data_bucket_arn
   user_data_bucket_name      = module.s3_cloudfront.user_data_bucket_name
   kms_key_arn                = module.monitoring_security.kms_key_arn
+  rds_endpoint               = module.database.rds_endpoint
+  db_credentials_secret_arn  = module.monitoring_security.db_credentials_secret_arn
 }
 
 # 7. Asynchronous AI Pipeline (SQS, SNS, EventBridge, Step Functions)
 module "ai_pipeline" {
-  source                = "./modules/ai_pipeline"
-  environment           = var.environment
-  kms_key_arn           = module.monitoring_security.kms_key_arn
-  user_data_bucket_arn  = module.s3_cloudfront.user_data_bucket_arn
-  user_data_bucket_name = module.s3_cloudfront.user_data_bucket_name
+  source                      = "./modules/ai_pipeline"
+  environment                 = var.environment
+  kms_key_arn                 = module.monitoring_security.kms_key_arn
+  user_data_bucket_arn        = module.s3_cloudfront.user_data_bucket_arn
+  user_data_bucket_name       = module.s3_cloudfront.user_data_bucket_name
+  lambda_backend_function_arn = module.api_gateway_lambda.lambda_function_arn
 }

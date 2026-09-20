@@ -125,8 +125,10 @@ export interface CodingProblem {
   constraints: string; // JSON string array
   hints: string; // JSON string array
   starterCode: string; // JSON string
+  referenceSolution?: string; // JSON string
   testCases: string; // JSON string
   relatedSkillName?: string;
+  contentReady?: boolean;
 }
 
 export interface ProjectItem {

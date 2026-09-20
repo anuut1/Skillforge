@@ -1,0 +1,71 @@
+{
+  "Comment": "SkillForge End-to-End Resume and Placement Match Pipeline",
+  "StartAt": "ValidateDocument",
+  "States": {
+    "ValidateDocument": {
+      "Type": "Pass",
+      "Result": { "status": "VALIDATED" },
+      "ResultPath": "$.validation",
+      "Next": "ExtractTextWithTextract"
+    },
+    "ExtractTextWithTextract": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:982503294595:function:skillforge-api-backend-prod",
+        "Payload": {
+          "task": "EXTRACT_TEXT",
+          "s3Bucket.$": "$.s3Bucket",
+          "s3Key.$": "$.s3Key",
+          "userId.$": "$.userId"
+        }
+      },
+      "ResultSelector": {
+        "status": "TEXT_EXTRACTED",
+        "extractedText.$": "$.Payload.extractedText"
+      },
+      "ResultPath": "$.extraction",
+      "Next": "AnalyzeWithBedrock"
+    },
+    "AnalyzeWithBedrock": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:ap-south-1:982503294595:function:skillforge-api-backend-prod",
+        "Payload": {
+          "task": "ANALYZE_RESUME",
+          "extractedText.$": "$.extraction.extractedText",
+          "targetRole.$": "$.targetRole",
+          "jobDescription.$": "$.jobDescription",
+          "userId.$": "$.userId"
+        }
+      },
+      "ResultSelector": {
+        "status": "BEDROCK_ANALYZED",
+        "analysis.$": "$.Payload.analysis"
+      },
+      "ResultPath": "$.analysis",
+      "Next": "PublishAnalysisCompleteEvent"
+    },
+    "PublishAnalysisCompleteEvent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::events:putEvents",
+      "Parameters": {
+        "Entries": [
+          {
+            "Detail": {
+              "userId.$": "$.userId",
+              "status": "COMPLETED",
+              "atsScore.$": "$.analysis.analysis.atsScore"
+            },
+            "DetailType": "ResumeAnalyzed",
+            "EventBusName": "skillforge-events-prod",
+            "Source": "skillforge.resume"
+          }
+        ]
+      },
+      "ResultPath": "$.eventResult",
+      "End": true
+    }
+  }
+}

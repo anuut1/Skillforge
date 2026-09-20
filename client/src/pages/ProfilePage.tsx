@@ -20,7 +20,6 @@ import {
   BookOpen,
   TrendingUp,
   X,
-  FileText,
   Activity,
   Briefcase,
   GraduationCap,
@@ -55,7 +54,7 @@ interface Achievement {
   id: string;
   title: string;
   description: string;
-  category: 'interview' | 'coding' | 'learning' | 'resume';
+  category: 'interview' | 'coding' | 'learning';
   icon: string;
   unlocked: boolean;
   unlockedAt?: string;
@@ -253,16 +252,16 @@ const ProfilePage: React.FC = () => {
       maxProgress: 100
     },
     {
-      id: 'resume-tuned',
-      title: 'ATS Strategist',
-      description: 'Scan and match resume variants against custom job descriptions with score >= 80%.',
-      category: 'resume',
-      icon: 'FileText',
+      id: 'dsa-grind',
+      title: 'Algorithmic Virtuoso',
+      description: 'Solve algorithm problems across array, hashing, and dynamic programming tracks.',
+      category: 'coding',
+      icon: 'Code',
       unlocked: true,
       unlockedAt: 'Active',
-      criteria: 'Targeted JD Resume Scan Completed',
-      progress: 1,
-      maxProgress: 1
+      criteria: 'DSA Problems Solved',
+      progress: stats.problemsSolved || 12,
+      maxProgress: 30
     },
     {
       id: 'streak-7',
@@ -614,21 +613,21 @@ const ProfilePage: React.FC = () => {
                   {/* Immediate Recommended Next Actions */}
                   <div className="space-y-2">
                     <div
-                      onClick={() => navigate('/resume-matcher')}
+                      onClick={() => navigate('/playground')}
                       className="p-3.5 bg-indigo-950/30 border border-indigo-500/20 rounded-xl flex items-center justify-between cursor-pointer hover:bg-indigo-950/50 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <FileText className="h-4 w-4 text-indigo-400" />
+                        <Code className="h-4 w-4 text-indigo-400" />
                         <div>
-                          <div className="text-xs font-bold text-white">Optimize Resume for Specific Job Description</div>
-                          <div className="text-[11px] text-indigo-300">Run a dual-input ATS scan and accept metric-driven rewrites</div>
+                          <div className="text-xs font-bold text-white">Practice Algorithmic Challenges</div>
+                          <div className="text-[11px] text-indigo-300">Run code against real test cases with AI review feedback</div>
                         </div>
                       </div>
                       <ChevronRight className="h-4 w-4 text-indigo-400" />
                     </div>
 
                     <div
-                      onClick={() => navigate('/mock-interview')}
+                      onClick={() => navigate('/interview')}
                       className="p-3.5 bg-purple-950/30 border border-purple-500/20 rounded-xl flex items-center justify-between cursor-pointer hover:bg-purple-950/50 transition-colors"
                     >
                       <div className="flex items-center gap-3">

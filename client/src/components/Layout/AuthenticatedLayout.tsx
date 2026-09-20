@@ -21,7 +21,8 @@ import {
   Menu,
   X,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 
 interface NotificationItem {
@@ -113,12 +114,12 @@ const AuthenticatedLayout: React.FC = () => {
       navigate('/projects');
     } else if (q.includes('place') || q.includes('job') || q.includes('prep')) {
       navigate('/placement-hub');
+    } else if (q.includes('resume') || q.includes('cv') || q.includes('ats')) {
+      navigate('/resume');
     } else if (q.includes('arena') || q.includes('chal') || q.includes('lead')) {
       navigate('/arena');
     } else if (q.includes('interv') || q.includes('mock')) {
       navigate('/interview');
-    } else if (q.includes('resume')) {
-      navigate('/resume');
     } else {
       navigate('/catalog');
     }
@@ -133,6 +134,7 @@ const AuthenticatedLayout: React.FC = () => {
     { to: '/playground', label: 'Playground', icon: Code2 },
     { to: '/projects', label: 'Projects', icon: FolderGit2 },
     { to: '/placement-hub', label: 'Placement Hub', icon: Briefcase },
+    { to: '/resume', label: 'Resume Analyzer', icon: FileText },
     { to: '/arena', label: 'Arena', icon: Swords },
     { to: '/profile', label: 'Profile', icon: User },
   ];
@@ -418,7 +420,6 @@ const AuthenticatedLayout: React.FC = () => {
                 { label: 'Enter Arena & Challenges', to: '/arena', desc: 'Daily challenges, contests, and peer leaderboards' },
                 { label: 'Start AI Mock Interview', to: '/interview', desc: 'Simulate live FAANG-standard technical screen' },
                 { label: 'View Cryptographic Skill Passport', to: '/passport', desc: 'Verified evidence of code and projects' },
-                { label: 'Match Resume with Jobs', to: '/resume', desc: 'ATS parser and keyword optimization' },
                 { label: 'Edit Profile & Settings', to: '/profile', desc: 'Update career track, timeline, and known techs' }
               ]
                 .filter(cmd => !searchQuery || cmd.label.toLowerCase().includes(searchQuery.toLowerCase()) || cmd.desc.toLowerCase().includes(searchQuery.toLowerCase()))

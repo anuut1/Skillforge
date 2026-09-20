@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { User } from '../types';
+import { cognitoSignOut, cognitoGetCurrentToken } from '../lib/cognito';
 
 interface AuthContextType {
   user: User | null;
@@ -18,18 +19,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+    const initAuth = async () => {
+      const storedToken = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
 
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error('Failed to parse user from local storage');
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (e) {
+          console.error('Failed to parse user from local storage');
+        }
+
+        // If Cognito is enabled, check if a newer/refreshed token is available
+        try {
+          const freshToken = await cognitoGetCurrentToken();
+          if (freshToken) {
+            localStorage.setItem('token', freshToken);
+            setToken(freshToken);
+          }
+        } catch (err) {
+          // Keep existing storedToken & storedUser to avoid unexpected logouts on transient network drops
+          console.debug('Cognito background session validation skipped/failed:', err);
+        }
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+
+    initAuth();
   }, []);
 
   const login = (newToken: string, newUser: User) => {
@@ -40,6 +57,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    cognitoSignOut().catch(() => {});
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);

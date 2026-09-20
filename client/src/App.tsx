@@ -20,11 +20,11 @@ import RoadmapPage from './pages/RoadmapPage';
 import SkillGapPage from './pages/SkillGapPage';
 import CodingPlaygroundPage from './pages/CodingPlaygroundPage';
 import ProjectsPage from './pages/ProjectsPage';
-import ResumeMatcherPage from './pages/ResumeMatcherPage';
 import InterviewSimulatorPage from './pages/InterviewSimulatorPage';
 import PlacementHubPage from './pages/PlacementHubPage';
 import ArenaPage from './pages/ArenaPage';
 import ProfilePage from './pages/ProfilePage';
+import ResumeMatcherPage from './pages/ResumeMatcherPage';
 
 import LandingPage from './pages/LandingPage';
 import AuthenticatedLayout from './components/Layout/AuthenticatedLayout';
@@ -74,8 +74,9 @@ const App: React.FC = () => {
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/placement-hub" element={<PlacementHubPage />} />
               <Route path="/arena" element={<ArenaPage />} />
-              <Route path="/resume" element={<ResumeMatcherPage />} />
               <Route path="/interview" element={<InterviewSimulatorPage />} />
+              <Route path="/resume" element={<ResumeMatcherPage />} />
+              <Route path="/resume-analyzer" element={<ResumeMatcherPage />} />
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
           </Route>

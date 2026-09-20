@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import CourseCard from '../components/CourseCard';
@@ -21,7 +21,9 @@ import {
   CheckSquare,
   Square,
   RotateCcw,
-  ArrowRight
+  ArrowRight,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import client from '../api/client';
 
@@ -63,8 +65,10 @@ const StudentDashboard: React.FC = () => {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotData, setCopilotData] = useState<any>(null);
 
-  // Today's Mission State
+  // Today's Mission State & User Customization
   const [mission, setMission] = useState<any>(null);
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [newTaskLabel, setNewTaskLabel] = useState('');
 
   // Mistake Memory & Learning DNA
   const [mistakes, setMistakes] = useState<any>(null);
@@ -72,6 +76,9 @@ const StudentDashboard: React.FC = () => {
 
   // Active Interactive Skill Graph Node
   const [activeSkillNode, setActiveSkillNode] = useState<string>('Graphs');
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const missionStorageKey = `skillforge_mission_${todayKey}_${user?.id || 'guest'}`;
 
   useEffect(() => {
     // 1. Load Profile & Progress
@@ -84,10 +91,17 @@ const StudentDashboard: React.FC = () => {
       .then(res => setRevisionTopics(res.data || []))
       .catch(err => console.error(err));
 
-    // 3. Load Daily Mission
-    client.get('/mission/daily')
-      .then(res => setMission(res.data))
-      .catch(err => console.error(err));
+    // 3. Load Daily Mission (cached per user per day)
+    const cachedMission = localStorage.getItem(missionStorageKey);
+    if (cachedMission) {
+      try {
+        setMission(JSON.parse(cachedMission));
+      } catch (e) {
+        fetchDailyMission();
+      }
+    } else {
+      fetchDailyMission();
+    }
 
     // 4. Load Mistake Memory
     client.get('/learning/mistake-memory')
@@ -103,7 +117,18 @@ const StudentDashboard: React.FC = () => {
     client.post('/copilot/advice', { question: 'What should I learn today?' })
       .then(res => setCopilotData(res.data))
       .catch(err => console.error(err));
-  }, []);
+  }, [user?.id, missionStorageKey]);
+
+  const fetchDailyMission = () => {
+    client.get('/mission/daily')
+      .then(res => {
+        if (res.data) {
+          setMission(res.data);
+          localStorage.setItem(missionStorageKey, JSON.stringify(res.data));
+        }
+      })
+      .catch(err => console.error(err));
+  };
 
   const handleAskCopilot = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,12 +148,16 @@ const StudentDashboard: React.FC = () => {
   const handleToggleMissionTask = async (taskId: string, currentCompleted: boolean) => {
     if (!mission) return;
     try {
-      await client.post('/mission/complete-task', { taskId, xp: 30 });
+      await client.post('/mission/complete-task', { taskId, xp: 30 }).catch(() => {});
       setMission((prev: any) => {
-        const updatedTasks = prev.tasks.map((t: any) => t.id === taskId ? { ...t, completed: !currentCompleted } : t);
+        const currentTasks = Array.isArray(prev?.tasks) ? prev.tasks : [];
+        const updatedTasks = currentTasks.map((t: any) => t.id === taskId ? { ...t, completed: !currentCompleted } : t);
         const completedCount = updatedTasks.filter((t: any) => t.completed).length;
-        const progress = Math.round((completedCount / updatedTasks.length) * 100);
-        return { ...prev, tasks: updatedTasks, progress };
+        const totalCount = updatedTasks.length;
+        const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+        const updated = { ...prev, tasks: updatedTasks, progress };
+        localStorage.setItem(missionStorageKey, JSON.stringify(updated));
+        return updated;
       });
       // Boost local profile XP
       setProfile((prev: any) => prev ? { ...prev, xp: (prev.xp || 150) + 30 } : prev);
@@ -137,8 +166,134 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteMissionTask = (taskId: string) => {
+    setMission((prev: any) => {
+      if (!prev) return prev;
+      const currentTasks = Array.isArray(prev?.tasks) ? prev.tasks : [];
+      const updatedTasks = currentTasks.filter((t: any) => t.id !== taskId);
+      const completedCount = updatedTasks.filter((t: any) => t.completed).length;
+      const totalCount = updatedTasks.length;
+      const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+      const updated = { ...prev, tasks: updatedTasks, progress };
+      localStorage.setItem(missionStorageKey, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleAddNewTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskLabel.trim()) return;
+    const newTask = {
+      id: `task_custom_${Date.now()}`,
+      label: newTaskLabel.trim(),
+      link: '/coding',
+      completed: false,
+      xp: 25
+    };
+    setMission((prev: any) => {
+      const existingTasks = prev?.tasks || [];
+      const updatedTasks = [...existingTasks, newTask];
+      const completedCount = updatedTasks.filter((t: any) => t.completed).length;
+      const totalCount = updatedTasks.length;
+      const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+      const updated = {
+        ...(prev || {
+          title: 'Daily Placement Sprint',
+          objective: 'Personalized sprint calibrated to today\'s learning goals.',
+          rewardXp: 120,
+          streakDays: 7
+        }),
+        tasks: updatedTasks,
+        progress
+      };
+      localStorage.setItem(missionStorageKey, JSON.stringify(updated));
+      return updated;
+    });
+    setNewTaskLabel('');
+    setIsAddingTask(false);
+  };
+
+  const getTargetedPracticeLink = (node: string) => {
+    switch (node) {
+      case 'Prefix Sums':
+        return '/coding?category=Arrays&topic=Prefix%20Sums';
+      case 'Two Pointers':
+        return '/coding?category=Two%20Pointers&topic=Two%20Pointers';
+      case 'BFS':
+        return '/coding?category=Graphs&topic=BFS';
+      case 'DFS':
+        return '/coding?category=Graphs&topic=DFS';
+      case 'Arrays':
+        return '/coding?category=Arrays';
+      case 'Graphs':
+        return '/coding?category=Graphs';
+      case 'DSA':
+      default:
+        return '/coding?category=All';
+    }
+  };
+
+  const getNodeDetails = (node: string) => {
+    switch (node) {
+      case 'Prefix Sums':
+        return { name: 'Prefix Sums', gainDSA: '+3%', gainReadiness: '+1.5%', status: 'Mastered' };
+      case 'Two Pointers':
+        return { name: 'Two Pointers', gainDSA: '+4%', gainReadiness: '+2.0%', status: 'Proficient' };
+      case 'BFS':
+        return { name: 'BFS Traversal', gainDSA: '+7%', gainReadiness: '+3.5%', status: 'Gap Area' };
+      case 'DFS':
+        return { name: 'DFS & Topological Sort', gainDSA: '+8%', gainReadiness: '+4.0%', status: 'Critical Gap' };
+      case 'Arrays':
+        return { name: 'Arrays & HashMaps', gainDSA: '+5%', gainReadiness: '+2.5%', status: 'Strong' };
+      case 'Graphs':
+        return { name: 'Graph Algorithms', gainDSA: '+9%', gainReadiness: '+4.5%', status: 'Primary Gap' };
+      case 'DSA':
+      default:
+        return { name: 'Data Structures & Algorithms', gainDSA: '+10%', gainReadiness: '+5.0%', status: 'Core Domain' };
+    }
+  };
+
   const careerGoal = profile?.careerGoal || 'Full Stack Developer';
   const careerReadiness = profile?.readinessScore || 71;
+
+  // Stable secondary message picked once on mount
+  const secondaryMessage = useMemo(() => {
+    const secondaryMessages = [
+      'Ready to make some progress today?',
+      "Let's keep building toward your goals.",
+      'Good to see you back.',
+      "Let's see what you can accomplish today.",
+      'Keep learning. Keep building.',
+      'Make today count.'
+    ];
+    return secondaryMessages[new Date().getDate() % secondaryMessages.length];
+  }, []);
+
+  // Determine time-of-day greeting (Phase 2)
+  const getGreetingPrefix = () => {
+    const hour = new Date().getHours();
+    let displayName = user?.name?.trim() || profile?.name?.trim() || '';
+    if (displayName.toLowerCase() === 'skillforge engineer' || displayName.toLowerCase() === 'student') {
+      displayName = user?.email ? user.email.split('@')[0] : '';
+      if (displayName) displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+    }
+
+    if (!displayName) {
+      return 'Welcome back!';
+    }
+
+    if (hour >= 5 && hour < 12) {
+      return `Good morning, ${displayName}!`;
+    } else if (hour >= 12 && hour < 17) {
+      return `Good afternoon, ${displayName}!`;
+    } else if (hour >= 17 && hour < 21) {
+      return `Good evening, ${displayName}!`;
+    } else {
+      return `Welcome back, ${displayName}!`;
+    }
+  };
+
+  const greetingPrefix = getGreetingPrefix();
 
   return (
     <div className="min-h-screen bg-slate-950 pb-24 text-slate-200">
@@ -151,10 +306,10 @@ const StudentDashboard: React.FC = () => {
                 <Sparkles className="h-3.5 w-3.5" /> Career Track: {careerGoal}
               </div>
               <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">
-                Welcome back, {user?.name || 'Engineer'}!
+                {greetingPrefix}
               </h1>
               <p className="text-slate-400 text-sm sm:text-base max-w-2xl">
-                SkillForge continuously tracks where you are, your skill gaps, and exactly what to learn next to land your target <strong>{careerGoal}</strong> role.
+                {secondaryMessage} SkillForge continuously tracks where you are, your skill gaps, and exactly what to learn next to land your target <strong>{careerGoal}</strong> role.
               </p>
             </div>
 
@@ -342,14 +497,61 @@ const StudentDashboard: React.FC = () => {
                     </span>
                   </button>
 
-                  <Link
-                    to={task.link}
-                    className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[11px] font-bold transition-colors shrink-0"
-                  >
-                    Launch
-                  </Link>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Link
+                      to={task.link || '/coding'}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 text-[11px] font-bold transition-colors"
+                    >
+                      Launch
+                    </Link>
+                    <button
+                      onClick={() => handleDeleteMissionTask(task.id)}
+                      title="Delete task"
+                      className="p-1 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
+            </div>
+
+            {/* Custom Task Addition */}
+            <div className="pt-2 border-t border-slate-800/80">
+              {isAddingTask ? (
+                <form onSubmit={handleAddNewTask} className="p-3 bg-slate-800/80 border border-indigo-500/40 rounded-xl flex flex-col sm:flex-row gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="Enter new task description (e.g. Solve 1 Graph problem)"
+                    value={newTaskLabel}
+                    onChange={(e) => setNewTaskLabel(e.target.value)}
+                    className="w-full sm:flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shrink-0"
+                    >
+                      Save Task
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsAddingTask(false); setNewTaskLabel(''); }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-xs shrink-0"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setIsAddingTask(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 py-1 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Task
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -422,9 +624,16 @@ const StudentDashboard: React.FC = () => {
             {/* Visual Topology Diagram */}
             <div className="min-w-[600px] flex flex-col items-center space-y-6 text-center">
               {/* ROOT: DSA */}
-              <div className="px-6 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs shadow-lg shadow-indigo-500/30 border border-indigo-400/30">
+              <button
+                onClick={() => setActiveSkillNode('DSA')}
+                className={`px-6 py-2.5 rounded-2xl font-black text-xs shadow-lg transition-all ${
+                  activeSkillNode === 'DSA'
+                    ? 'bg-indigo-500 text-white ring-2 ring-indigo-300 shadow-indigo-500/50'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/30 border border-indigo-400/30'
+                }`}
+              >
                 DATA STRUCTURES & ALGORITHMS (68% Mastery)
-              </div>
+              </button>
 
               {/* LAYER 1 */}
               <div className="grid grid-cols-2 gap-24 w-full max-w-lg">
@@ -432,8 +641,8 @@ const StudentDashboard: React.FC = () => {
                   onClick={() => setActiveSkillNode('Arrays')}
                   className={`p-3 rounded-xl border text-xs font-bold transition-all ${
                     activeSkillNode === 'Arrays'
-                      ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                      : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                      ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/40'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   Arrays & HashMaps (85%)
@@ -444,7 +653,7 @@ const StudentDashboard: React.FC = () => {
                   className={`p-3 rounded-xl border text-xs font-bold transition-all ${
                     activeSkillNode === 'Graphs'
                       ? 'bg-amber-500/20 border-amber-500 text-amber-300 ring-2 ring-amber-500/50'
-                      : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   Graph Algorithms (42% • GAP)
@@ -452,34 +661,67 @@ const StudentDashboard: React.FC = () => {
               </div>
 
               {/* LAYER 2: Leaf Nodes */}
-              <div className="grid grid-cols-4 gap-4 w-full">
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-emerald-500/40 text-emerald-400 text-[11px] font-bold">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full">
+                <button
+                  onClick={() => setActiveSkillNode('Prefix Sums')}
+                  className={`p-2.5 rounded-xl border text-[11px] font-bold transition-all text-center ${
+                    activeSkillNode === 'Prefix Sums'
+                      ? 'bg-emerald-500/30 border-emerald-400 text-emerald-300 ring-2 ring-emerald-500/50 shadow-lg shadow-emerald-500/20'
+                      : 'bg-slate-900 border-emerald-500/40 text-emerald-400 hover:bg-slate-800/80'
+                  }`}
+                >
                   Prefix Sums (90%)
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-emerald-500/40 text-emerald-400 text-[11px] font-bold">
+                </button>
+                <button
+                  onClick={() => setActiveSkillNode('Two Pointers')}
+                  className={`p-2.5 rounded-xl border text-[11px] font-bold transition-all text-center ${
+                    activeSkillNode === 'Two Pointers'
+                      ? 'bg-emerald-500/30 border-emerald-400 text-emerald-300 ring-2 ring-emerald-500/50 shadow-lg shadow-emerald-500/20'
+                      : 'bg-slate-900 border-emerald-500/40 text-emerald-400 hover:bg-slate-800/80'
+                  }`}
+                >
                   Two Pointers (82%)
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-amber-500/40 text-amber-400 text-[11px] font-bold animate-pulse">
+                </button>
+                <button
+                  onClick={() => setActiveSkillNode('BFS')}
+                  className={`p-2.5 rounded-xl border text-[11px] font-bold transition-all text-center ${
+                    activeSkillNode === 'BFS'
+                      ? 'bg-amber-500/30 border-amber-400 text-amber-300 ring-2 ring-amber-500/50 shadow-lg shadow-amber-500/20'
+                      : 'bg-slate-900 border-amber-500/40 text-amber-400 hover:bg-slate-800/80'
+                  }`}
+                >
                   BFS Traversal (48%)
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-900 border border-red-500/40 text-red-400 text-[11px] font-bold">
+                </button>
+                <button
+                  onClick={() => setActiveSkillNode('DFS')}
+                  className={`p-2.5 rounded-xl border text-[11px] font-bold transition-all text-center ${
+                    activeSkillNode === 'DFS'
+                      ? 'bg-red-500/30 border-red-400 text-red-300 ring-2 ring-red-500/50 shadow-lg shadow-red-500/20'
+                      : 'bg-slate-900 border-red-500/40 text-red-400 hover:bg-slate-800/80'
+                  }`}
+                >
                   DFS & Topological Sort (35%)
-                </div>
+                </button>
               </div>
             </div>
 
             {/* Selected Node Dependency Explanation */}
-            <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div className="text-slate-400">
-                Selected Focus: <strong className="text-white">{activeSkillNode}</strong>. Closing this node increases Overall DSA by <strong>+6%</strong> and placement readiness by <strong>+3.2%</strong>.
-              </div>
-              <Link
-                to="/coding/two-sum"
-                className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shrink-0"
-              >
-                Practice Targeted Exercises →
-              </Link>
-            </div>
+            {(() => {
+              const details = getNodeDetails(activeSkillNode);
+              return (
+                <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="text-slate-400">
+                    Selected Focus: <strong className="text-white">{details.name}</strong> ({details.status}). Closing this node increases Overall DSA by <strong>{details.gainDSA}</strong> and placement readiness by <strong>{details.gainReadiness}</strong>.
+                  </div>
+                  <Link
+                    to={getTargetedPracticeLink(activeSkillNode)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shrink-0 flex items-center gap-1.5"
+                  >
+                    Practice Targeted Exercises ({details.name}) <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -501,31 +743,51 @@ const StudentDashboard: React.FC = () => {
 
             {mistakes && (
               <div className="space-y-3">
-                <div className="p-3.5 bg-slate-800/60 rounded-2xl border border-slate-700/60 text-xs">
-                  <span className="text-slate-400 font-bold block mb-1">Common Cognitive Traps:</span>
-                  <ul className="list-disc list-inside text-slate-300 space-y-1">
-                    {mistakes.frequentStruggles?.map((s: string, idx: number) => (
-                      <li key={idx}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="space-y-2">
-                  {mistakes.recentMistakes?.map((m: any, idx: number) => (
-                    <div key={idx} className="p-3 bg-slate-800/40 rounded-xl border border-slate-800 text-xs flex justify-between items-center gap-2">
-                      <div>
-                        <div className="font-bold text-white">{m.problemTitle}</div>
-                        <div className="text-[11px] text-red-400 mt-0.5">Trap: {m.mistakePattern}</div>
+                {mistakes.recentMistakes && mistakes.recentMistakes.length > 0 ? (
+                  <>
+                    {mistakes.frequentStruggles && mistakes.frequentStruggles.length > 0 && (
+                      <div className="p-3.5 bg-slate-800/60 rounded-2xl border border-slate-700/60 text-xs">
+                        <span className="text-slate-400 font-bold block mb-1">Common Cognitive Traps:</span>
+                        <ul className="list-disc list-inside text-slate-300 space-y-1">
+                          {mistakes.frequentStruggles.map((s: string, idx: number) => (
+                            <li key={idx}>{s}</li>
+                          ))}
+                        </ul>
                       </div>
-                      <Link
-                        to={`/coding/${m.slug}`}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-semibold border border-slate-700"
-                      >
-                        Retry
-                      </Link>
+                    )}
+
+                    <div className="space-y-2">
+                      {mistakes.recentMistakes.map((m: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-slate-800/40 rounded-xl border border-slate-800 text-xs flex justify-between items-center gap-2">
+                          <div>
+                            <div className="font-bold text-white">{m.problemTitle}</div>
+                            <div className="text-[11px] text-red-400 mt-0.5">Trap: {m.mistakePattern}</div>
+                          </div>
+                          <Link
+                            to={`/coding/${m.slug}`}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-semibold border border-slate-700"
+                          >
+                            Retry
+                          </Link>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <div className="p-6 text-center bg-slate-800/30 rounded-2xl border border-slate-800/80">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                    <p className="text-sm font-semibold text-white">No recurring mistakes yet — keep practicing!</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      As you attempt problems in the Coding Playground, recurring error patterns and cognitive traps will be tracked here to guide targeted counter-habit drills.
+                    </p>
+                    <Link
+                      to="/coding"
+                      className="inline-flex items-center gap-1.5 mt-3 px-3.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 text-xs font-semibold border border-indigo-500/30 transition-colors"
+                    >
+                      Solve Coding Challenges <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -562,9 +824,11 @@ const StudentDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-slate-800/30 rounded-xl border border-slate-800 text-[11px] text-slate-400">
-                  Optimal Sprint Cadence: <strong className="text-white">{dna.recommendedRoutine.learnMin}m learn + {dna.recommendedRoutine.practiceMin}m code + {dna.recommendedRoutine.quizMin}m quiz</strong>.
-                </div>
+                {dna.recommendedRoutine && (
+                  <div className="p-3.5 bg-slate-800/30 rounded-xl border border-slate-800 text-[11px] text-slate-400">
+                    Optimal Sprint Cadence: <strong className="text-white">{dna.recommendedRoutine.learnMin || 25}m learn + {dna.recommendedRoutine.practiceMin || 15}m code + {dna.recommendedRoutine.quizMin || 10}m quiz</strong>.
+                  </div>
+                )}
               </div>
             )}
           </div>

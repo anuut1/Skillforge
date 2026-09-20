@@ -24,6 +24,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import client from '../api/client';
+import ErrorBoundary from '../components/ErrorBoundary';
 import RecommendationFeedbackButton from '../components/common/RecommendationFeedbackButton';
 import type { DetailedResumeAnalysis, ResumeVersionItem, ScoreDriver } from '../types';
 
@@ -87,6 +88,10 @@ const ResumeMatcherPage: React.FC = () => {
   // Versions & History
   const [history, setHistory] = useState<DetailedResumeAnalysis[]>([]);
   const [versions, setVersions] = useState<ResumeVersionItem[]>([]);
+  const [uploadedResumes, setUploadedResumes] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedVersionName, setSelectedVersionName] = useState('Primary Resume');
   const [isAddingSkillsToProfile, setIsAddingSkillsToProfile] = useState(false);
   const [profileAddSuccess, setProfileAddSuccess] = useState(false);
@@ -99,30 +104,94 @@ const ResumeMatcherPage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const normalizeAnalysis = (raw: any): DetailedResumeAnalysis | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      ...raw,
+      targetRole: raw.targetRole || raw.role || 'Software Engineer',
+      jobTitle: raw.jobTitle || 'Target Role',
+      companyName: raw.companyName || 'Target Company',
+      atsScore: typeof raw.atsScore === 'number' ? raw.atsScore : (Number(raw.atsScore) || 0),
+      skillsMatchScore: typeof raw.skillsMatchScore === 'number' ? raw.skillsMatchScore : (Number(raw.skillsMatchScore) || 0),
+      experienceMatchScore: typeof raw.experienceMatchScore === 'number' ? raw.experienceMatchScore : (Number(raw.experienceMatchScore) || 0),
+      keywordMatchScore: typeof raw.keywordMatchScore === 'number' ? raw.keywordMatchScore : (Number(raw.keywordMatchScore) || 0),
+      projectMatchScore: typeof raw.projectMatchScore === 'number' ? raw.projectMatchScore : (Number(raw.projectMatchScore) || 0),
+      atsFormattingScore: typeof raw.atsFormattingScore === 'number' ? raw.atsFormattingScore : (Number(raw.atsFormattingScore) || 0),
+      matchingSkills: Array.isArray(raw.matchingSkills) ? raw.matchingSkills : [],
+      missingSkills: Array.isArray(raw.missingSkills) ? raw.missingSkills : [],
+      partialSkills: Array.isArray(raw.partialSkills) ? raw.partialSkills : [],
+      atsIssues: Array.isArray(raw.atsIssues) ? raw.atsIssues : [],
+      keywordOptimization: Array.isArray(raw.keywordOptimization) ? raw.keywordOptimization : [],
+      sectionFeedback: Array.isArray(raw.sectionFeedback) ? raw.sectionFeedback : [],
+      fixerSuggestions: Array.isArray(raw.fixerSuggestions) ? raw.fixerSuggestions : [],
+      scoreDrivers: Array.isArray(raw.scoreDrivers) ? raw.scoreDrivers : [],
+      jobBreakdown: raw.jobBreakdown && typeof raw.jobBreakdown === 'object' ? {
+        role: raw.jobBreakdown.role || '',
+        experience: raw.jobBreakdown.experience || '',
+        coreSkills: Array.isArray(raw.jobBreakdown.coreSkills) ? raw.jobBreakdown.coreSkills : [],
+        preferred: Array.isArray(raw.jobBreakdown.preferred) ? raw.jobBreakdown.preferred : [],
+        responsibilities: Array.isArray(raw.jobBreakdown.responsibilities) ? raw.jobBreakdown.responsibilities : [],
+        topPriorities: Array.isArray(raw.jobBreakdown.topPriorities) ? raw.jobBreakdown.topPriorities : [],
+      } : {
+        role: '',
+        experience: '',
+        coreSkills: [],
+        preferred: [],
+        responsibilities: [],
+        topPriorities: []
+      }
+    };
+  };
+
   useEffect(() => {
     fetchHistory();
     fetchVersions();
+    fetchUploadedResumes();
   }, []);
 
   const fetchHistory = async () => {
     try {
       const res = await client.get('/resume/history');
-      if (Array.isArray(res.data)) {
-        setHistory(res.data);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.history || res.data?.resumes || []);
+      if (Array.isArray(list)) {
+        const normalized = list.map(item => normalizeAnalysis(item)).filter(Boolean) as DetailedResumeAnalysis[];
+        setHistory(normalized);
+      } else {
+        setHistory([]);
       }
     } catch (err) {
       console.error('Failed to load resume history', err);
+      setHistory([]);
+    }
+  };
+
+  const fetchUploadedResumes = async () => {
+    try {
+      const res = await client.get('/resume/list');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.resumes || res.data?.list || []);
+      if (Array.isArray(list)) {
+        setUploadedResumes(list);
+      } else {
+        setUploadedResumes([]);
+      }
+    } catch (err) {
+      console.error('Failed to load uploaded resumes', err);
+      setUploadedResumes([]);
     }
   };
 
   const fetchVersions = async () => {
     try {
       const res = await client.get('/resume/versions');
-      if (Array.isArray(res.data)) {
-        setVersions(res.data);
+      const list = Array.isArray(res.data) ? res.data : (res.data?.versions || []);
+      if (Array.isArray(list)) {
+        setVersions(list);
+      } else {
+        setVersions([]);
       }
     } catch (err) {
       console.error('Failed to load resume versions', err);
+      setVersions([]);
     }
   };
 
@@ -130,65 +199,133 @@ const ResumeMatcherPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // If PDF and user is authenticated, attempt S3 presigned upload
-    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+    // Reset error & status state
+    setUploadError(null);
+    setStatusMessage(null);
+
+    // Supported formats validation
+    const lowerName = file.name.toLowerCase();
+    const isPdf = file.type === 'application/pdf' || lowerName.endsWith('.pdf');
+    const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || lowerName.endsWith('.docx') || lowerName.endsWith('.doc');
+    const isPlainText = file.type === 'text/plain' || lowerName.endsWith('.txt') || lowerName.endsWith('.md') || lowerName.endsWith('.json');
+
+    if (!isPdf && !isDocx && !isPlainText) {
+      setUploadError('Invalid file format. Please upload a PDF, Word document (.docx), or plain text file (.txt).');
+      return;
+    }
+
+    // File size validation (max 5MB)
+    const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setUploadError(`File size exceeds 5MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB). Please upload a smaller document.`);
+      return;
+    }
+
+    setIsUploading(true);
+
+    if (isPdf) {
+      setUploadProgress(`Uploading and analyzing ${file.name}...`);
       try {
-        setStatusMessage(`Requesting secure S3 upload slot for ${file.name}...`);
-        const urlRes = await client.post('/resume/upload-url', {
-          fileName: file.name,
-          contentType: file.type || 'application/pdf'
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('targetRole', targetRole);
+        if (jobDescription) {
+          formData.append('jobDescription', jobDescription);
+        }
+
+        const directRes = await client.post('/resume/upload-direct', formData, {
+          headers: { 'Content-Type': undefined }
         });
 
-        if (urlRes.data?.uploadUrl) {
-          setStatusMessage(`Uploading encrypted resume to Amazon S3 (${file.name})...`);
-          await fetch(urlRes.data.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type || 'application/pdf' },
-            body: file,
-          });
-
-          setStatusMessage(`Processing resume via AWS Textract & Bedrock...`);
-          const processRes = await client.post('/resume/process-s3', {
-            s3Key: urlRes.data.s3Key,
-            bucket: urlRes.data.bucket,
-            fileName: file.name,
-            targetRole,
-            jobDescription
-          });
-
-          if (processRes.data?.extractedText) {
-            setResumeText(processRes.data.extractedText);
-          }
-          if (processRes.data?.atsScore !== undefined) {
-            setAnalysisResult(processRes.data);
-            if (processRes.data.fixerSuggestions) {
-              setFixerItems(processRes.data.fixerSuggestions);
-            }
-            fetchHistory();
-            setActiveTab('overview');
-          }
-
-          setStatusMessage(`Successfully extracted and analyzed via AWS! (${file.name})`);
-          setTimeout(() => setStatusMessage(null), 4000);
-          return;
+        if (directRes.data?.extractedText) {
+          setResumeText(directRes.data.extractedText);
         }
-      } catch (err: any) {
-        console.warn('S3 / Textract pipeline not reachable or errored. Falling back to client-side text extractor:', err);
-        setStatusMessage('Cloud extraction unavailable; reading text file locally.');
+        if (directRes.data?.atsScore !== undefined) {
+          const normalized = normalizeAnalysis(directRes.data);
+          setAnalysisResult(normalized);
+          if (directRes.data.fixerSuggestions) {
+            setFixerItems(directRes.data.fixerSuggestions);
+          }
+          fetchHistory();
+          fetchUploadedResumes();
+          setActiveTab('overview');
+        }
+
+        setStatusMessage(`Resume "${file.name}" uploaded and analyzed successfully!`);
+        setTimeout(() => setStatusMessage(null), 5000);
+        return;
+      } catch (directErr: any) {
+        const serverError = directErr?.response?.data?.message || directErr?.response?.data?.error || directErr?.message || 'Failed to extract text from PDF document.';
+        setUploadError(serverError);
+        return;
+      } finally {
+        setIsUploading(false);
+        setUploadProgress(null);
       }
     }
 
-    // Standard client text reader fallback
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        setResumeText(content);
-        setStatusMessage(`Loaded file: ${file.name}`);
-        setTimeout(() => setStatusMessage(null), 3000);
+    if (isDocx) {
+      setUploadProgress(`Uploading and analyzing ${file.name}...`);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('targetRole', targetRole);
+        if (jobDescription) {
+          formData.append('jobDescription', jobDescription);
+        }
+
+        const directRes = await client.post('/resume/upload', formData, {
+          headers: { 'Content-Type': undefined }
+        });
+
+        if (directRes.data?.extractedText) {
+          setResumeText(directRes.data.extractedText);
+        }
+        if (directRes.data?.atsScore !== undefined) {
+          const normalized = normalizeAnalysis(directRes.data);
+          setAnalysisResult(normalized);
+          if (directRes.data.fixerSuggestions) {
+            setFixerItems(directRes.data.fixerSuggestions);
+          }
+          fetchHistory();
+          fetchUploadedResumes();
+          setActiveTab('overview');
+        }
+
+        setStatusMessage(`Resume "${file.name}" uploaded and analyzed successfully!`);
+        setTimeout(() => setStatusMessage(null), 5000);
+        return;
+      } catch (directErr: any) {
+        const serverError = directErr?.response?.data?.message || directErr?.message || 'Failed to extract text from Word document.';
+        setUploadError(serverError);
+        return;
+      } finally {
+        setIsUploading(false);
+        setUploadProgress(null);
       }
-    };
-    reader.readAsText(file);
+    }
+
+    // Standard client text reader fallback ONLY for genuine plain text (.txt/.md)
+    if (isPlainText) {
+      setUploadProgress(`Reading text file ${file.name}...`);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        if (content) {
+          setResumeText(content);
+          setStatusMessage(`Loaded text file: ${file.name}`);
+          setTimeout(() => setStatusMessage(null), 3000);
+        }
+        setIsUploading(false);
+        setUploadProgress(null);
+      };
+      reader.onerror = () => {
+        setUploadError(`Failed to read file ${file.name}`);
+        setIsUploading(false);
+        setUploadProgress(null);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleAnalyze = async (e?: React.FormEvent) => {
@@ -208,8 +345,13 @@ const ResumeMatcherPage: React.FC = () => {
         jobDescription,
         versionName: selectedVersionName
       });
-      setAnalysisResult(res.data);
-      if (res.data.fixerSuggestions) {
+      const normalized = normalizeAnalysis(res.data);
+      if (!normalized || normalized.atsScore <= 0) {
+        setStatusMessage('Analysis couldn\'t be completed — please ensure your resume contains readable text and try again.');
+        return;
+      }
+      setAnalysisResult(normalized);
+      if (res.data?.fixerSuggestions) {
         setFixerItems(res.data.fixerSuggestions);
       }
       fetchHistory();
@@ -349,7 +491,7 @@ const ResumeMatcherPage: React.FC = () => {
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileUpload}
-                    accept=".txt,.md,.json,.pdf"
+                    accept=".pdf,.docx,.doc,.txt,.md"
                     className="hidden"
                   />
                   <button
@@ -368,6 +510,29 @@ const ResumeMatcherPage: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {uploadError && (
+                <div className="mb-3 p-3.5 rounded-2xl bg-red-950/60 border border-red-500/40 text-xs text-red-200 flex items-start justify-between gap-3 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
+                    <span className="leading-relaxed">{uploadError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUploadError(null)}
+                    className="text-red-400 hover:text-red-200 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-red-500/10 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {isUploading && (
+                <div className="mb-3 p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-3">
+                  <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  <span className="text-xs text-indigo-200 font-medium">{uploadProgress || 'Uploading and processing document...'}</span>
+                </div>
+              )}
 
               <textarea
                 rows={10}
@@ -596,14 +761,14 @@ const ResumeMatcherPage: React.FC = () => {
                   </div>
 
                   {/* Connect Resume to Profile Widget */}
-                  {analysisResult.matchingSkills.length > 0 && (
+                  {(analysisResult.matchingSkills || []).length > 0 && (
                     <div className="p-5 rounded-3xl bg-indigo-950/30 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
                           <CheckCircle2 className="h-4 w-4" /> Connect Resume → SkillForge Profile
                         </h4>
                         <p className="text-xs text-slate-300 mt-1">
-                          Your resume verified skills in <strong>{analysisResult.matchingSkills.slice(0, 4).map(s => s.name).join(', ')}</strong>. Sync them to your SkillForge Career Profile to boost placement readiness?
+                          Your resume verified skills in <strong>{(analysisResult.matchingSkills || []).slice(0, 4).map(s => s.name).join(', ')}</strong>. Sync them to your SkillForge Career Profile to boost placement readiness?
                         </p>
                       </div>
 
@@ -631,14 +796,14 @@ const ResumeMatcherPage: React.FC = () => {
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
                       <div className="flex items-center justify-between">
                         <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                          <CheckCircle2 className="h-4 w-4" /> Verified Strengths ({analysisResult.matchingSkills.length})
+                          <CheckCircle2 className="h-4 w-4" /> Verified Strengths ({(analysisResult.matchingSkills || []).length})
                         </h3>
                         <button onClick={() => setActiveTab('skills')} className="text-xs text-indigo-400 hover:underline">
                           View details
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {analysisResult.matchingSkills.map((s, idx) => (
+                        {(analysisResult.matchingSkills || []).map((s, idx) => (
                           <span key={idx} className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-xs font-semibold">
                             ✓ {s.name}
                           </span>
@@ -650,14 +815,14 @@ const ResumeMatcherPage: React.FC = () => {
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
                       <div className="flex items-center justify-between">
                         <h3 className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
-                          <AlertCircle className="h-4 w-4" /> Critical Skill Gaps ({analysisResult.missingSkills.length})
+                          <AlertCircle className="h-4 w-4" /> Critical Skill Gaps ({(analysisResult.missingSkills || []).length})
                         </h3>
                         <button onClick={() => setActiveTab('skills')} className="text-xs text-indigo-400 hover:underline">
                           View details
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {analysisResult.missingSkills.map((s, idx) => (
+                        {(analysisResult.missingSkills || []).map((s, idx) => (
                           <span key={idx} className="px-3 py-1 rounded-xl bg-red-500/10 text-red-300 border border-red-500/20 text-xs font-semibold">
                             🔴 {s.name}
                           </span>
@@ -905,10 +1070,10 @@ const ResumeMatcherPage: React.FC = () => {
                   {/* MATCHING SKILLS */}
                   <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-4 flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4" /> MATCHING SKILLS ({analysisResult.matchingSkills.length})
+                      <CheckCircle2 className="h-4 w-4" /> MATCHING SKILLS ({(analysisResult.matchingSkills || []).length})
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {analysisResult.matchingSkills.map((s, idx) => (
+                      {(analysisResult.matchingSkills || []).map((s, idx) => (
                         <div key={idx} className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 space-y-1.5">
                           <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                             <span>✓</span> {s.name}
@@ -924,10 +1089,10 @@ const ResumeMatcherPage: React.FC = () => {
                   {/* MISSING SKILLS WITH COURSE PIPELINE */}
                   <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-red-400 mb-4 flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4" /> MISSING SKILLS ({analysisResult.missingSkills.length})
+                      <AlertCircle className="h-4 w-4" /> MISSING SKILLS ({(analysisResult.missingSkills || []).length})
                     </h3>
                     <div className="space-y-4">
-                      {analysisResult.missingSkills.map((s, idx) => (
+                      {(analysisResult.missingSkills || []).map((s, idx) => (
                         <div key={idx} className="p-4 rounded-2xl bg-red-950/20 border border-red-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
@@ -965,13 +1130,13 @@ const ResumeMatcherPage: React.FC = () => {
                   </div>
 
                   {/* PARTIAL MATCH */}
-                  {analysisResult.partialSkills.length > 0 && (
+                  {(analysisResult.partialSkills || []).length > 0 && (
                     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
                       <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-4 flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4" /> PARTIAL MATCH ({analysisResult.partialSkills.length})
+                        <AlertTriangle className="h-4 w-4" /> PARTIAL MATCH ({(analysisResult.partialSkills || []).length})
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {analysisResult.partialSkills.map((s, idx) => (
+                        {(analysisResult.partialSkills || []).map((s, idx) => (
                           <div key={idx} className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-1.5">
                             <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                               <span>🟡</span> {s.name}
@@ -1049,10 +1214,10 @@ const ResumeMatcherPage: React.FC = () => {
                   {/* Potential ATS Formatting Vulnerabilities */}
                   <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" /> Potential ATS Formatting & Parse Issues ({analysisResult.atsIssues.length})
+                      <AlertTriangle className="h-4 w-4" /> Potential ATS Formatting & Parse Issues ({(analysisResult.atsIssues || []).length})
                     </h3>
                     <div className="space-y-3">
-                      {analysisResult.atsIssues.map((issue, idx) => (
+                      {(analysisResult.atsIssues || []).map((issue, idx) => (
                         <div key={idx} className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-1">
                           <div className="flex items-center gap-2 text-xs font-bold text-white">
                             <span className="text-amber-400">⚠️</span> {issue.issue}
@@ -1251,65 +1416,161 @@ const ResumeMatcherPage: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 7: RESUME HISTORY */}
+              {/* TAB 7: RESUME HISTORY & UPLOADED FILES */}
               {activeTab === 'history' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                    <div>
-                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                        Resume Analysis History
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Revisit past JD scans and track score progression over time.
-                      </p>
+                <div className="space-y-6">
+                  {/* Section A: Uploaded Documents in S3 */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <div>
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-indigo-400" />
+                          Uploaded Resumes Storage (Amazon S3)
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Private documents saved in encrypted bucket <code className="text-indigo-300 font-mono text-[11px]">skillforge-user-data-prod</code>.
+                        </p>
+                      </div>
+                      <button
+                        onClick={fetchUploadedResumes}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                      </button>
                     </div>
+
+                    {uploadedResumes.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500 text-xs">
+                        No resumes uploaded yet. Upload a PDF or DOCX to begin!
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {uploadedResumes.map((rec) => (
+                          <div
+                            key={rec.id}
+                            className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-sm">{rec.filename}</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  rec.analysisStatus === 'COMPLETED'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : rec.analysisStatus === 'PROCESSING'
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                }`}>
+                                  {rec.analysisStatus}
+                                </span>
+                              </div>
+                              <div className="text-slate-400 text-[11px] flex items-center gap-3">
+                                <span>Uploaded: {new Date(rec.uploadedAt).toLocaleDateString()}</span>
+                                <span className="font-mono text-slate-500">{rec.s3Key.split('/').slice(0, 3).join('/')}/...</span>
+                              </div>
+                              {rec.errorMessage && (
+                                <p className="text-red-400 text-[11px]">{rec.errorMessage}</p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {rec.extractedText && (
+                                <button
+                                  onClick={() => {
+                                    setResumeText(rec.extractedText);
+                                    if (rec.jobDescription) setJobDescription(rec.jobDescription);
+                                    if (rec.targetRole) setTargetRole(rec.targetRole);
+                                    setStatusMessage(`Loaded extracted text from ${rec.filename}`);
+                                    setTimeout(() => setStatusMessage(null), 3000);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 font-semibold text-xs transition-colors"
+                                >
+                                  Load Text
+                                </button>
+                              )}
+
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await client.delete(`/resume/${rec.resumeId}`);
+                                    fetchUploadedResumes();
+                                    setStatusMessage(`Deleted ${rec.filename}`);
+                                    setTimeout(() => setStatusMessage(null), 3000);
+                                  } catch (err: any) {
+                                    setStatusMessage('Failed to delete resume record.');
+                                  }
+                                }}
+                                className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                                title="Delete resume"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {history.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500 text-xs">
-                      No saved analyses found yet. Run your first scan above!
+                  {/* Section B: Completed Analysis Reports */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <div>
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Resume Analysis History Reports
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Revisit past JD scans and track score progression over time.
+                        </p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {history.map((h) => (
-                        <div
-                          key={h.id}
-                          className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-white">{h.targetRole}</span>
-                              <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 font-semibold">
-                                {h.jobTitle || 'Custom JD'}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-3">
-                              <span>Analyzed: {h.createdAt ? new Date(h.createdAt).toLocaleDateString() : 'Today'}</span>
-                              <span>Version: {h.resumeVersionName || 'Primary'}</span>
-                            </div>
-                          </div>
 
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <div className="text-base font-black text-emerald-400">{h.atsScore} / 100</div>
-                              <div className="text-[10px] text-slate-400">ATS Score</div>
+                    {history.length === 0 ? (
+                      <div className="text-center py-12 text-slate-500 text-xs">
+                        No saved analyses found yet. Run your first scan above!
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {history.map((h) => (
+                          <div
+                            key={h.id}
+                            className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">{h.targetRole}</span>
+                                <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 font-semibold">
+                                  {h.jobTitle || 'Custom JD'}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-3">
+                                <span>Analyzed: {h.createdAt ? new Date(h.createdAt).toLocaleDateString() : 'Today'}</span>
+                                <span>Version: {h.resumeVersionName || 'Primary'}</span>
+                              </div>
                             </div>
-                            <button
-                              onClick={() => {
-                                setAnalysisResult(h);
-                                if (h.resumeText) setResumeText(h.resumeText);
-                                if (h.jobDescription) setJobDescription(h.jobDescription);
-                                setActiveTab('overview');
-                              }}
-                              className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-colors"
-                            >
-                              Reopen Analysis
-                            </button>
+
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="text-base font-black text-emerald-400">{h.atsScore} / 100</div>
+                                <div className="text-[10px] text-slate-400">ATS Score</div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const normalized = normalizeAnalysis(h);
+                                  setAnalysisResult(normalized);
+                                  if (h.resumeText) setResumeText(h.resumeText);
+                                  if (h.jobDescription) setJobDescription(h.jobDescription);
+                                  setActiveTab('overview');
+                                }}
+                                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-colors"
+                              >
+                                Reopen Analysis
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1344,7 +1605,7 @@ const ResumeMatcherPage: React.FC = () => {
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                          <span className="text-[10px] text-slate-500">{ver.resumeText.split(/\s+/).length} words</span>
+                          <span className="text-[10px] text-slate-500">{(ver.resumeText || '').trim() ? (ver.resumeText || '').trim().split(/\s+/).length : 0} words</span>
                           <button
                             onClick={() => {
                               setResumeText(ver.resumeText);
@@ -1371,4 +1632,10 @@ const ResumeMatcherPage: React.FC = () => {
   );
 };
 
-export default ResumeMatcherPage;
+const ResumeMatcherPageWithErrorBoundary: React.FC = () => (
+  <ErrorBoundary>
+    <ResumeMatcherPage />
+  </ErrorBoundary>
+);
+
+export default ResumeMatcherPageWithErrorBoundary;

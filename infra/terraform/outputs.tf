@@ -27,3 +27,8 @@ output "rds_postgresql_endpoint" {
   description = "RDS PostgreSQL database endpoint"
   value       = module.database.rds_endpoint
 }
+
+output "lambda_backend_function_name" {
+  description = "Backend Lambda function connected to VPC RDS and API Gateway"
+  value       = module.api_gateway_lambda.lambda_function_name
+}

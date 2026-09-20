@@ -9,6 +9,11 @@ import {
   interviewService,
   instructorAiService
 } from '../services/aiServices';
+import {
+  analyzeResumeWithBedrockOrFallback,
+  analyzeCodeWithBedrockOrFallback
+} from '../services/bedrockAiService';
+import { codeExecutionService } from '../services/codeExecutionService';
 
 // ============================================================================
 // 1. STUDENT PROFILE & ONBOARDING
@@ -529,35 +534,48 @@ export const submitCodingSolution = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const { problemId, language, code } = req.body;
 
-    const problem = await prisma.codingProblem.findUnique({ where: { id: problemId } });
+    let problem = await prisma.codingProblem.findUnique({ where: { id: problemId } });
+    if (!problem) {
+      problem = await prisma.codingProblem.findFirst({ where: { slug: problemId } });
+    }
     if (!problem) return res.status(404).json({ message: 'Problem not found' });
 
-    // Review code with AI review service
-    const review = codeReviewService.analyze(language, code, problem.title);
+    let parsedTestCases: any[] = [];
+    let parsedExamples: any[] = [];
+    try { parsedTestCases = JSON.parse(problem.testCases); } catch {}
+    try { parsedExamples = JSON.parse(problem.examples); } catch {}
 
-    // Dynamic test validation check
-    const isPassing = !code.includes('throw') && code.length > 20;
-    const passedTests = isPassing ? 15 : 8;
-    const totalTests = 15;
-    const status = isPassing ? 'Accepted' : 'Wrong Answer';
+    // Execute the student's exact submitted code against test cases
+    const execution = await codeExecutionService.execute(language, code, parsedTestCases, parsedExamples);
+
+    // Review the student's submitted code with AI code review (Bedrock with honest heuristic fallback)
+    const review = await analyzeCodeWithBedrockOrFallback(
+      language,
+      code,
+      problem.title,
+      problem.description,
+      execution
+    );
+
+    const isPassing = execution.status === 'Accepted';
 
     const submission = await prisma.codingSubmission.create({
       data: {
         userId,
-        problemId,
+        problemId: problem.id,
         language,
         code,
-        status,
-        passedTests,
-        totalTests,
-        runtimeMs: Math.floor(Math.random() * 30) + 35,
-        memoryMb: 14.5,
-        timeComplexity: review.timeComplexity,
+        status: execution.status,
+        passedTests: execution.passedTests,
+        totalTests: execution.totalTests,
+        runtimeMs: execution.runtimeMs,
+        memoryMb: execution.memoryMb ?? 14.2,
+        timeComplexity: execution.timeComplexity,
         aiReview: JSON.stringify(review)
       }
     });
 
-    // Reward XP
+    // Reward XP only if genuinely accepted
     if (isPassing) {
       await prisma.studentProfile.update({
         where: { userId },
@@ -565,7 +583,22 @@ export const submitCodingSolution = async (req: Request, res: Response) => {
       }).catch(() => {});
     }
 
-    res.json({ submission, review });
+    res.json({
+      submission,
+      review,
+      execution: {
+        status: execution.status,
+        passedTests: execution.passedTests,
+        totalTests: execution.totalTests,
+        runtimeMs: execution.runtimeMs,
+        memoryMb: execution.memoryMb,
+        timeComplexity: execution.timeComplexity,
+        spaceComplexity: execution.spaceComplexity,
+        complexityExplanation: execution.complexityExplanation,
+        testResults: execution.testResults,
+        errorMessage: execution.errorMessage
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error submitting solution', error });
   }
@@ -810,7 +843,13 @@ export const analyzeResume = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Please upload or paste your resume before analyzing.' });
     }
 
-    const analysis = resumeAnalysisService.analyze(resumeText, targetRole, jobDescription);
+    const analysis = await analyzeResumeWithBedrockOrFallback(resumeText, targetRole, jobDescription);
+
+    if (!analysis || typeof analysis.atsScore !== 'number' || analysis.atsScore <= 0) {
+      return res.status(422).json({
+        message: 'Analysis couldn\'t be completed — please ensure your resume contains readable text and try again.'
+      });
+    }
 
     // Persist to database if authenticated
     let savedRecord = null;
@@ -867,9 +906,9 @@ export const analyzeResume = async (req: Request, res: Response) => {
       id: savedRecord?.id || 'temp-id',
       createdAt: savedRecord?.createdAt || new Date()
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in analyzeResume:', error);
-    res.status(500).json({ message: 'Unable to analyze your resume right now.', error });
+    res.status(500).json({ message: error.message || 'Unable to analyze your resume right now.', error: error.message });
   }
 };
 
@@ -882,6 +921,24 @@ export const getResumeHistory = async (req: Request, res: Response) => {
       take: 20
     });
 
+    const safeParseArray = (raw: any) => {
+      try {
+        const res = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+        return Array.isArray(res) ? res : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const safeParseObject = (raw: any) => {
+      try {
+        const res = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+        return res && typeof res === 'object' && !Array.isArray(res) ? res : {};
+      } catch {
+        return {};
+      }
+    };
+
     const parsed = history.map(item => ({
       id: item.id,
       targetRole: item.targetRole,
@@ -891,17 +948,17 @@ export const getResumeHistory = async (req: Request, res: Response) => {
       atsScore: item.atsScore,
       skillsMatchScore: item.skillsMatchScore,
       createdAt: item.createdAt,
-      jobBreakdown: JSON.parse(item.jobBreakdown || '{}'),
-      matchingSkills: JSON.parse(item.matchingSkills || '[]'),
-      missingSkills: JSON.parse(item.missingSkills || '[]'),
-      partialSkills: JSON.parse(item.partialSkills || '[]'),
-      atsIssues: JSON.parse(item.atsIssues || '[]'),
-      keywordOptimization: JSON.parse(item.keywordOptimization || '[]'),
-      sectionFeedback: JSON.parse(item.sectionFeedback || '[]'),
-      fixerSuggestions: JSON.parse(item.fixerSuggestions || '[]'),
-      scoreDrivers: JSON.parse(item.scoreDrivers || '[]'),
-      resumeText: item.resumeText,
-      jobDescription: item.jobDescription
+      jobBreakdown: safeParseObject(item.jobBreakdown),
+      matchingSkills: safeParseArray(item.matchingSkills),
+      missingSkills: safeParseArray(item.missingSkills),
+      partialSkills: safeParseArray(item.partialSkills),
+      atsIssues: safeParseArray(item.atsIssues),
+      keywordOptimization: safeParseArray(item.keywordOptimization),
+      sectionFeedback: safeParseArray(item.sectionFeedback),
+      fixerSuggestions: safeParseArray(item.fixerSuggestions),
+      scoreDrivers: safeParseArray(item.scoreDrivers),
+      resumeText: item.resumeText || '',
+      jobDescription: item.jobDescription || ''
     }));
 
     res.json(parsed);
@@ -1561,51 +1618,64 @@ export const getMistakeMemory = async (req: Request, res: Response) => {
     const wrongSubs = await prisma.codingSubmission.findMany({
       where: { userId, status: { not: 'Accepted' } },
       include: { problem: true },
-      take: 5,
+      take: 10,
       orderBy: { createdAt: 'desc' }
     });
 
-    const recentMistakes = wrongSubs.length > 0 ? wrongSubs.map(s => ({
-      problemTitle: s.problem.title,
-      slug: s.problem.slug,
-      mistakePattern: s.code.includes('for') && !s.code.includes('seen')
-        ? 'HashMap frequency lookup logic'
-        : 'Boundary indexing & null termination',
-      action: 'Solve targeted variations with hash-table invariants'
-    })) : [
-      {
-        problemTitle: 'Two Sum',
-        slug: 'two-sum',
-        mistakePattern: 'Incorrect HashMap lookup indexing',
-        action: 'Review complementary index storage in hash tables'
-      },
-      {
-        problemTitle: 'Number of Islands',
-        slug: 'two-sum',
-        mistakePattern: 'Forgot visited array state / redundant re-traversal',
-        action: 'Practice grid traversal coordinate marking'
-      },
-      {
-        problemTitle: 'Binary Search',
-        slug: 'two-sum',
-        mistakePattern: 'Off-by-one boundary condition in while loop',
-        action: 'Use left <= right with mid calculation safety'
+    if (wrongSubs.length === 0) {
+      return res.json({
+        frequentStruggles: [],
+        recentMistakes: [],
+        targetedExercise: null
+      });
+    }
+
+    const failureCountsByProblem: Record<string, { count: number; title: string; slug: string; status: string; code: string }> = {};
+    for (const sub of wrongSubs) {
+      const pSlug = sub.problem?.slug || sub.problemId;
+      const pTitle = sub.problem?.title || pSlug;
+      if (!failureCountsByProblem[pSlug]) {
+        failureCountsByProblem[pSlug] = { count: 0, title: pTitle, slug: pSlug, status: sub.status, code: sub.code || '' };
       }
-    ];
+      failureCountsByProblem[pSlug].count += 1;
+    }
+
+    const strugglesSet = new Set<string>();
+    const recentMistakes = Object.values(failureCountsByProblem).map(item => {
+      let pattern = 'Edge cases or output mismatch';
+      if (item.status === 'Time Limit Exceeded') {
+        pattern = 'Time complexity bound exceeded (O(N^2) instead of O(N log N))';
+        strugglesSet.add('Time complexity bounds / nested iteration traps');
+      } else if (item.status === 'Compilation Error' || item.status === 'Runtime Error') {
+        pattern = 'Runtime type or boundary access exception';
+        strugglesSet.add('Boundary condition & null checks');
+      } else if (item.code.includes('for') && !item.code.includes('Map') && !item.code.includes('Set')) {
+        pattern = 'Nested traversal without auxiliary index lookup';
+        strugglesSet.add('Lookup optimization with HashMaps / Sets');
+      } else {
+        strugglesSet.add('Edge-case input handling & invariant maintenance');
+      }
+
+      return {
+        problemTitle: item.title,
+        slug: item.slug,
+        failureCount: item.count,
+        mistakePattern: pattern,
+        action: `Practice targeted variations for ${item.title}`
+      };
+    });
+
+    const mostFailed = recentMistakes[0];
 
     res.json({
-      frequentStruggles: [
-        'Off-by-one boundary conditions',
-        'HashMap lookup complementary key verification',
-        'Graph visited set tracking under recursion'
-      ],
+      frequentStruggles: Array.from(strugglesSet),
       recentMistakes,
-      targetedExercise: {
-        title: 'Two Sum Variant: 3Sum with Distinct Triplet Sets',
-        slug: 'two-sum',
+      targetedExercise: mostFailed ? {
+        title: `Targeted Drill: ${mostFailed.problemTitle}`,
+        slug: mostFailed.slug,
         difficulty: 'Medium',
         recommendedTime: '15 mins'
-      }
+      } : null
     });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching mistake memory', error });

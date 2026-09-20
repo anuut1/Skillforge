@@ -30,6 +30,7 @@ model User {
   interviews        InterviewSession[]
   resumeAnalyses    ResumeAnalysis[]
   resumeVersions    ResumeVersion[]
+  resumes           ResumeRecord[]
   revisionTopics    RevisionTopic[]
   roomMemberships   StudyRoomMember[]
   notifications     Notification[]
@@ -187,10 +188,11 @@ model CodingProblem {
   examples         String   // JSON string of [{input, output, explanation}]
   constraints      String   // JSON string array of strings
   hints            String   // JSON string array of strings
-  starterCode      String   // JSON map: { "python": "...", "javascript": "...", "java": "...", "cpp": "..." }
-  testCases        String   // JSON array: [{ "input": "...", "expectedOutput": "..." }]
-  relatedSkillName String?
-  createdAt        DateTime @default(now())
+  starterCode        String   // JSON map: { "python": "...", "javascript": "...", "java": "...", "cpp": "..." }
+  referenceSolution  String?  // JSON map: { "python": "...", "javascript": "...", "java": "...", "cpp": "..." }
+  testCases          String   // JSON array: [{ "input": "...", "expectedOutput": "..." }]
+  relatedSkillName   String?
+  createdAt          DateTime @default(now())
 
   submissions CodingSubmission[]
 }
@@ -317,6 +319,30 @@ model ResumeVersion {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ResumeRecord {
+  id             String   @id @default(uuid())
+  resumeId       String   @unique
+  userId         String
+  filename       String
+  s3Key          String
+  fileType       String
+  fileSize       Int
+  uploadedAt     DateTime @default(now())
+  uploadStatus   String   @default("UPLOADED") // UPLOADING, UPLOADED, PROCESSING, COMPLETED, FAILED
+  analysisStatus String   @default("PENDING")  // PENDING, PROCESSING, COMPLETED, FAILED
+  analysisId     String?
+  targetRole     String?  @default("Software Engineer")
+  jobDescription String?
+  extractedText  String?
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RevisionTopic {

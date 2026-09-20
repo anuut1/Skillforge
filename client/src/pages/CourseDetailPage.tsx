@@ -38,8 +38,8 @@ const CourseDetailPage: React.FC = () => {
         : found.category === 'Core CS'
         ? 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=800&q=80'
         : 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&q=80',
-      enrolledCount: 2840 + found.title.length * 23,
-      lectureCount: found.lectures?.length || 5,
+      enrolledCount: 2840 + (found?.title || '').length * 23,
+      lectureCount: Array.isArray(found?.lectures) ? found.lectures.length : 5,
       price: 0,
       rating: 4.9
     };

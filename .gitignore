@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 */node_modules/
 dist/
 build/
@@ -12,3 +12,4 @@ build/
 *.tfstate
 *.tfstate.*
 tfplan
+scratch/

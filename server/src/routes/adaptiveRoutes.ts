@@ -71,11 +71,56 @@ router.post('/revisions/:id/complete', authenticate, completeRevision);
 router.get('/projects', authenticate, getProjects);
 router.post('/projects/submit', authenticate, submitProject);
 
-import { getResumeUploadUrl, processUploadedResume } from '../controllers/resumeAwsController';
+import multer from 'multer';
+import {
+  getResumeUploadUrl,
+  processUploadedResume,
+  getResumeStatus,
+  getUploadedResumes,
+  deleteUploadedResume,
+  uploadDirectResume,
+  uploadAndAnalyzeResumeDirect,
+  resumeUploadMiddleware,
+  getResumeCapabilities
+} from '../controllers/resumeAwsController';
 
-// AI Resume Analysis & Versions
+// Direct PDF Upload Multer Config (Memory storage, 10MB limit, strictly application/pdf)
+const directPdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const isPdf = file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      const err = new Error('Invalid file format. Only PDF documents (.pdf) are supported for direct upload.');
+      (err as any).status = 400;
+      return cb(err);
+    }
+    cb(null, true);
+  }
+}).single('file');
+
+const wrappedDirectUploadMiddleware = (req: any, res: any, next: any) => {
+  directPdfUpload(req, res, (err: any) => {
+    if (err) {
+      const status = err.status || (err.code === 'LIMIT_FILE_SIZE' ? 400 : 400);
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'File size exceeds 10MB limit.'
+        : err.message || 'File upload error.';
+      return res.status(status).json({ message, error: message });
+    }
+    next();
+  });
+};
+
+// AI Resume Analysis, Uploads & Versions
+router.get('/resume/capabilities', optionalAuthenticate, getResumeCapabilities);
+router.post('/resume/upload-direct', authenticate, wrappedDirectUploadMiddleware, uploadAndAnalyzeResumeDirect);
+router.post('/resume/upload', authenticate, resumeUploadMiddleware, uploadDirectResume);
 router.post('/resume/upload-url', authenticate, getResumeUploadUrl);
 router.post('/resume/process-s3', authenticate, processUploadedResume);
+router.get('/resume/status/:resumeId', authenticate, getResumeStatus);
+router.get('/resume/list', authenticate, getUploadedResumes);
+router.delete('/resume/:resumeId', authenticate, deleteUploadedResume);
 router.post('/resume/analyze', authenticate, analyzeResume);
 router.get('/resume/history', authenticate, getResumeHistory);
 router.get('/resume/versions', authenticate, getResumeVersions);

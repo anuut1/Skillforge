@@ -18,13 +18,16 @@ import {
   ArrowLeft,
   Sparkles,
   KeyRound,
-  CheckCircle2
+  CheckCircle2,
+  ShieldCheck
 } from 'lucide-react';
 import client from '../api/client';
 import {
   isCognitoEnabled,
   cognitoSignIn,
   cognitoSignUp,
+  cognitoConfirmSignUp,
+  cognitoResendConfirmationCode,
   cognitoForgotPassword,
   cognitoConfirmPassword
 } from '../lib/cognito';
@@ -83,6 +86,15 @@ const AuthPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loginFailed, setLoginFailed] = useState(false);
 
+  // Email verification modal state (for unconfirmed users)
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+  const [verifySuccess, setVerifySuccess] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const usingCognito = isCognitoEnabled();
@@ -102,6 +114,15 @@ const AuthPage: React.FC = () => {
       setRememberMe(true);
     }
   }, []);
+
+  // Countdown timer for resend code
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setResendCooldown(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   // Password validation criteria
   const hasMinLength = password.length >= 8;
@@ -159,7 +180,9 @@ const AuthPage: React.FC = () => {
         try {
           const res = await client.get('/auth/me');
           if (res?.data?.user) {
-            userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
+            const backendName = res.data.user.name;
+            const validName = backendName && backendName !== 'SkillForge Engineer' && backendName !== 'Student' ? backendName : userData.name;
+            userData = { ...res.data.user, name: validName, role: res.data.user.role.toLowerCase() as Role };
           }
         } catch (apiErr) {
           console.warn('Backend API profile sync bypassed, continuing with Cognito profile:', apiErr);
@@ -185,13 +208,18 @@ const AuthPage: React.FC = () => {
       const errMsg = err?.message || '';
 
       if (errName === 'UserNotConfirmedException' || errMsg.includes('User is not confirmed')) {
-        setError('Account is unconfirmed. If you recently registered or need access, please use Forgot Password or contact support.');
+        setError('Please verify your email before signing in. A verification code was sent to your email.');
+        setVerifyEmail(email.trim());
+        setVerifyCode('');
+        setVerifyError('');
+        setVerifySuccess('Enter the 6-digit confirmation code sent to your email address.');
+        setShowVerifyModal(true);
       } else if (errName === 'UserNotFoundException' || errMsg.includes('User does not exist')) {
         setError('No account found with this email. Please click "Create Account" below.');
       } else if (errName === 'NotAuthorizedException' || errMsg.includes('Incorrect username or password')) {
-        setError('Incorrect email or password. Please try again or use "Forgot Password?" below.');
+        setError('Incorrect email or password. Please check your credentials and try again.');
       } else {
-        const msg = err?.response?.data?.message || err?.message || 'Incorrect email or password. Please try again.';
+        const msg = err?.response?.data?.message || err?.message || 'Incorrect email or password. Please check your credentials and try again.';
         setError(msg);
       }
     } finally {
@@ -242,9 +270,6 @@ const AuthPage: React.FC = () => {
     setError('');
 
     try {
-      let token: string;
-      let userData: User;
-
       if (usingCognito) {
         try {
           await cognitoSignUp(email.trim(), password, name.trim());
@@ -259,23 +284,15 @@ const AuthPage: React.FC = () => {
           throw cognitoErr;
         }
 
-        const auth = await cognitoSignIn(email.trim(), password);
-        token = auth.token;
-        userData = {
-          ...auth.user,
-          name: name.trim(),
-          role: role.toLowerCase() as Role,
-        };
-        localStorage.setItem('token', token);
-
-        try {
-          const res = await client.get('/auth/me');
-          if (res?.data?.user) {
-            userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
-          }
-        } catch (apiErr) {
-          console.warn('Backend API profile sync bypassed on signup:', apiErr);
-        }
+        // Newly registered user in Cognito is UNCONFIRMED and needs email verification
+        setVerifyEmail(email.trim());
+        setVerifyCode('');
+        setVerifyError('');
+        setVerifySuccess(`Verification code sent to ${email.trim()}. Please enter it below to confirm your account.`);
+        setResendCooldown(30);
+        setShowVerifyModal(true);
+        setLoading(false);
+        return;
       } else {
         const res = await client.post('/auth/register', {
           email: email.trim(),
@@ -286,24 +303,129 @@ const AuthPage: React.FC = () => {
           currentLevel,
           knownTechs: selectedSkills
         });
-        token = res.data.token;
-        userData = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
-      }
+        const token = res.data.token;
+        const userData: User = { ...res.data.user, role: res.data.user.role.toLowerCase() as Role };
 
-      setRegisteredSummary({
-        name: userData.name,
-        careerGoal,
-        skillsCount: selectedSkills.length,
-        readiness: currentLevel === 'Advanced' ? 82 : currentLevel === 'Intermediate' ? 68 : 45
-      });
-      setSignupStep(5);
-      login(token, userData);
+        setRegisteredSummary({
+          name: userData.name,
+          careerGoal,
+          skillsCount: selectedSkills.length,
+          readiness: currentLevel === 'Advanced' ? 82 : currentLevel === 'Intermediate' ? 68 : 45
+        });
+        setSignupStep(5);
+        login(token, userData);
+      }
     } catch (err: any) {
       console.error('Registration error:', err);
       const serverMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message;
       setError(serverMsg || 'Registration failed. Please check your details and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ==========================================
+  // EMAIL CONFIRMATION / VERIFICATION HANDLERS
+  // ==========================================
+  const handleConfirmVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVerifyError('');
+    setVerifySuccess('');
+
+    if (!verifyCode.trim() || verifyCode.trim().length < 4) {
+      setVerifyError('Please enter the verification code sent to your email.');
+      return;
+    }
+
+    setVerifyLoading(true);
+    try {
+      if (usingCognito) {
+        await cognitoConfirmSignUp(verifyEmail.trim(), verifyCode.trim());
+      } else {
+        // Fallback for local mock if any
+      }
+
+      setVerifySuccess('Email verified successfully! You can now log in to your account.');
+      setTimeout(async () => {
+        setShowVerifyModal(false);
+        setVerifyCode('');
+        // Attempt automatic seamless login if password is available
+        if (password && email.trim() === verifyEmail.trim()) {
+          try {
+            setLoading(true);
+            const auth = await cognitoSignIn(email.trim(), password);
+            localStorage.setItem('token', auth.token);
+            let finalUser = auth.user;
+            try {
+              const meRes = await client.get('/auth/me');
+              if (meRes?.data?.user) {
+                finalUser = { ...meRes.data.user, role: meRes.data.user.role.toLowerCase() as Role };
+              }
+            } catch {}
+
+            setRegisteredSummary({
+              name: finalUser.name,
+              careerGoal,
+              skillsCount: selectedSkills.length,
+              readiness: currentLevel === 'Advanced' ? 82 : currentLevel === 'Intermediate' ? 68 : 45
+            });
+            login(auth.token, finalUser);
+            setSignupStep(5);
+          } catch {
+            // If auto-login fails, redirect cleanly to login form
+            setIsLogin(true);
+            setError('');
+          } finally {
+            setLoading(false);
+          }
+        } else {
+          setIsLogin(true);
+          setEmail(verifyEmail);
+          setError('');
+        }
+      }, 1500);
+    } catch (err: any) {
+      const errName = err?.name || '';
+      const rawMsg = err?.message || err?.response?.data?.message || '';
+      if (errName === 'CodeMismatchException' || rawMsg.includes('Invalid code') || rawMsg.includes('mismatch')) {
+        setVerifyError('Invalid verification code provided. Please check the code in your email.');
+      } else if (errName === 'ExpiredCodeException' || rawMsg.includes('expired')) {
+        setVerifyError('Verification code has expired. Please click "Resend Code" below.');
+      } else if (rawMsg.includes('Current status is CONFIRMED') || errName === 'NotAuthorizedException') {
+        setVerifySuccess('Account is already confirmed! Please log in with your credentials.');
+        setTimeout(() => {
+          setShowVerifyModal(false);
+          setIsLogin(true);
+          setEmail(verifyEmail);
+        }, 1500);
+      } else {
+        setVerifyError(rawMsg || 'Verification failed. Please try again.');
+      }
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    setVerifyError('');
+    setVerifySuccess('');
+    setVerifyLoading(true);
+
+    try {
+      if (usingCognito) {
+        await cognitoResendConfirmationCode(verifyEmail.trim());
+        setVerifySuccess('A new verification code has been sent to your email.');
+        setResendCooldown(30);
+      } else {
+        setVerifySuccess('A new verification code has been generated.');
+        setResendCooldown(30);
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to resend code. Please try again.';
+      setVerifyError(msg);
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
@@ -448,8 +570,24 @@ const AuthPage: React.FC = () => {
                 <span>{error}</span>
               </div>
               {loginFailed && (
-                <div className="pt-2 border-t border-red-500/20 flex items-center justify-between gap-3 text-xs">
-                  <span className="text-slate-400">Don't have an account yet?</span>
+                <div className="pt-2 border-t border-red-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  {error.includes('verify your email') ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVerifyEmail(email.trim());
+                        setVerifyCode('');
+                        setVerifyError('');
+                        setVerifySuccess('Enter the 6-digit confirmation code sent to your email.');
+                        setShowVerifyModal(true);
+                      }}
+                      className="font-bold text-sky-400 hover:underline flex items-center gap-1"
+                    >
+                      Enter Verification Code →
+                    </button>
+                  ) : (
+                    <span className="text-slate-400">Don't have an account yet?</span>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -982,6 +1120,110 @@ const AuthPage: React.FC = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* EMAIL VERIFICATION MODAL */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-indigo-400" />
+                <h3 className="font-bold text-white text-base">Verify Your Email</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowVerifyModal(false);
+                  setVerifyError('');
+                  setVerifySuccess('');
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {verifyError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-400" />
+                <span>{verifyError}</span>
+              </div>
+            )}
+
+            {verifySuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-400" />
+                <span>{verifySuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmVerify} className="space-y-4">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Please verify your email before signing in. We've sent a 6-digit confirmation code to{' '}
+                <span className="text-indigo-300 font-semibold">{verifyEmail || 'your email'}</span>.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">Account Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="email"
+                    required
+                    value={verifyEmail}
+                    onChange={(e) => setVerifyEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-300 mb-1">6-Digit Confirmation Code</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.trim())}
+                  placeholder="e.g. 123456"
+                  className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:ring-2 focus:ring-indigo-500 font-mono tracking-widest text-center text-lg"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={verifyLoading}
+                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {verifyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {verifyLoading ? 'Verifying Code...' : 'Confirm & Activate Account'}
+              </button>
+
+              <div className="flex justify-between items-center text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVerifyModal(false);
+                    setIsLogin(true);
+                    setEmail(verifyEmail);
+                  }}
+                  className="text-slate-400 hover:text-white"
+                >
+                  ← Back to Login
+                </button>
+                <button
+                  type="button"
+                  disabled={verifyLoading || resendCooldown > 0}
+                  onClick={handleResendCode}
+                  className="text-indigo-400 hover:underline disabled:opacity-50 disabled:hover:no-underline font-medium"
+                >
+                  {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend Code'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -2,9 +2,10 @@ import prisma from './src/lib/prisma';
 import { DSA_PROBLEMS_CATALOG } from './src/data/dsaCatalog';
 
 async function seedCatalog() {
-  console.log(`Starting seeding of ${DSA_PROBLEMS_CATALOG.length} DSA problems...`);
+  const readyProblems = DSA_PROBLEMS_CATALOG.filter(p => p.contentReady === true);
+  console.log(`Starting seeding of ${readyProblems.length} verified DSA problems (prisma/seed.ts is primary source of truth)...`);
   let count = 0;
-  for (const prob of DSA_PROBLEMS_CATALOG) {
+  for (const prob of readyProblems) {
     await prisma.codingProblem.upsert({
       where: { slug: prob.slug },
       update: {
@@ -35,7 +36,7 @@ async function seedCatalog() {
     });
     count++;
   }
-  console.log(`Successfully seeded ${count} DSA problems into the database!`);
+  console.log(`Successfully seeded ${count} verified DSA problems into the database!`);
   await prisma.$disconnect();
 }
 

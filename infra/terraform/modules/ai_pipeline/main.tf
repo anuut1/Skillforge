@@ -50,6 +50,41 @@ resource "aws_iam_role" "step_functions_role" {
   })
 }
 
+resource "aws_iam_policy" "step_functions_policy" {
+  name        = "skillforge-step-functions-policy-${var.environment}"
+  description = "Policy allowing Step Functions to invoke backend processing Lambda"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "events:PutEvents"
+        ]
+        Resource = aws_cloudwatch_event_bus.app_bus.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "step_functions_attach" {
+  role       = aws_iam_role.step_functions_role.name
+  policy_arn = aws_iam_policy.step_functions_policy.arn
+}
+
+variable "lambda_backend_function_arn" {
+  type    = string
+  default = ""
+}
+
 resource "aws_sfn_state_machine" "resume_pipeline" {
   name     = "skillforge-resume-pipeline-${var.environment}"
   role_arn = aws_iam_role.step_functions_role.arn
@@ -65,21 +100,63 @@ resource "aws_sfn_state_machine" "resume_pipeline" {
         Next       = "ExtractTextWithTextract"
       }
       ExtractTextWithTextract = {
-        Type       = "Pass"
-        Result     = { status = "TEXT_EXTRACTED" }
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
+        Parameters = {
+          "FunctionName" = var.lambda_backend_function_arn != "" ? var.lambda_backend_function_arn : "arn:aws:lambda:ap-south-1:982503294595:function:skillforge-api-backend-${var.environment}"
+          "Payload" = {
+            "task"       = "EXTRACT_TEXT"
+            "s3Bucket.$" = "$.s3Bucket"
+            "s3Key.$"    = "$.s3Key"
+            "userId.$"   = "$.userId"
+          }
+        }
+        ResultSelector = {
+          "status"          = "TEXT_EXTRACTED"
+          "extractedText.$" = "$.Payload.extractedText"
+        }
         ResultPath = "$.extraction"
         Next       = "AnalyzeWithBedrock"
       }
       AnalyzeWithBedrock = {
-        Type       = "Pass"
-        Result     = { status = "BEDROCK_ANALYZED" }
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
+        Parameters = {
+          "FunctionName" = var.lambda_backend_function_arn != "" ? var.lambda_backend_function_arn : "arn:aws:lambda:ap-south-1:982503294595:function:skillforge-api-backend-${var.environment}"
+          "Payload" = {
+            "task"             = "ANALYZE_RESUME"
+            "extractedText.$"  = "$.extraction.extractedText"
+            "targetRole.$"     = "$.targetRole"
+            "jobDescription.$" = "$.jobDescription"
+            "userId.$"         = "$.userId"
+          }
+        }
+        ResultSelector = {
+          "status"     = "BEDROCK_ANALYZED"
+          "analysis.$" = "$.Payload.analysis"
+        }
         ResultPath = "$.analysis"
         Next       = "PublishAnalysisCompleteEvent"
       }
       PublishAnalysisCompleteEvent = {
-        Type   = "Pass"
-        Result = { status = "EVENT_DISPATCHED" }
-        End    = true
+        Type     = "Task"
+        Resource = "arn:aws:states:::events:putEvents"
+        Parameters = {
+          Entries = [
+            {
+              Detail = {
+                "userId.$"   = "$.userId"
+                "status"     = "COMPLETED"
+                "atsScore.$" = "$.analysis.analysis.atsScore"
+              }
+              DetailType   = "ResumeAnalyzed"
+              EventBusName = aws_cloudwatch_event_bus.app_bus.name
+              Source       = "skillforge.resume"
+            }
+          ]
+        }
+        ResultPath = "$.eventResult"
+        End        = true
       }
     }
   })

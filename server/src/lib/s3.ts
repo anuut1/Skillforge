@@ -1,8 +1,8 @@
-﻿import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const REGION = process.env.AWS_REGION || process.env.COGNITO_REGION || 'ap-south-1';
-const USER_DATA_BUCKET = process.env.S3_USER_DATA_BUCKET || 'skillforge-user-data';
+const USER_DATA_BUCKET = process.env.S3_USER_DATA_BUCKET || 'skillforge-user-data-prod';
 
 export const s3Client = new S3Client({
   region: REGION,
@@ -17,16 +17,17 @@ export interface PresignedUrlResult {
 
 /**
  * Generate a secure presigned PUT URL for client-side direct upload to S3
- * Strictly isolates keys by userId under resumes/{userId}/{filename}
+ * Strictly isolates keys by userId under users/{userId}/resumes/{resumeId}/{filename}
  */
 export async function generateResumeUploadUrl(
   userId: string,
   fileName: string,
-  contentType: string = 'application/pdf'
+  contentType: string = 'application/pdf',
+  customResumeId?: string
 ): Promise<PresignedUrlResult> {
   const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const timestamp = Date.now();
-  const s3Key = `resumes/${userId}/${timestamp}-${sanitizedFileName}`;
+  const resumeId = customResumeId || `res_${Date.now()}`;
+  const s3Key = `users/${userId}/resumes/${resumeId}/${sanitizedFileName}`;
 
   const command = new PutObjectCommand({
     Bucket: USER_DATA_BUCKET,
@@ -36,6 +37,7 @@ export async function generateResumeUploadUrl(
     Metadata: {
       'uploaded-by': userId,
       'original-name': sanitizedFileName,
+      'resume-id': resumeId,
     },
   });
 

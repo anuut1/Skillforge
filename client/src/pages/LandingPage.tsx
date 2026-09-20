@@ -269,7 +269,7 @@ const LandingPage: React.FC = () => {
                 <CheckCircle2 className="h-3.5 w-3.5 text-purple-400" /> 4-Axis Technical Evaluation
               </li>
               <li className="flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-purple-400" /> Instant Resume Gap Matcher
+                <CheckCircle2 className="h-3.5 w-3.5 text-purple-400" /> Instant Adaptive Feedback
               </li>
             </ul>
           </div>
@@ -303,7 +303,7 @@ const LandingPage: React.FC = () => {
               </div>
               <h3 className="text-xl font-bold text-white mb-2">5. Placement Hub & Career Readiness</h3>
               <p className="text-slate-400 text-xs sm:text-sm leading-relaxed mb-4">
-                Recruiters look for proven competency. SkillForge continuously evaluates your GitHub capstones, coding playground accuracy, mock interview transcripts, and ATS-optimized resume into an evidence-backed readiness profile.
+                Recruiters look for proven competency. SkillForge continuously evaluates your GitHub capstones, coding playground accuracy, mock interview transcripts, and CS fundamentals into an evidence-backed readiness profile.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-emerald-300 pt-4 border-t border-slate-800/60">
